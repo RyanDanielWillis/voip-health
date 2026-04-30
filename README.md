@@ -3,7 +3,7 @@
     <img src=/logo.png />
   </td>
   <td>
-    # Angry VoIP Scanner
+   <h1>Angry VoIP Scanner</h1>
 
 [![Python](https://img.shields.io/badge/Python-3.11-blue)](https://python.org)
 [![GitHub Action](https://github.com/RyanDanielWillis/Angry-Voip-Scanner/actions/workflows/scan.yml/badge.svg)](https://github.com/RyanDanielWillis/Angry-Voip-Scanner/actions)
