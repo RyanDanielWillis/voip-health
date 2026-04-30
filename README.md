@@ -8,7 +8,8 @@
 [![Python](https://img.shields.io/badge/Python-3.11-blue)](https://python.org)
 [![GitHub Action](https://github.com/RyanDanielWillis/Angry-Voip-Scanner/actions/workflows/scan.yml/badge.svg)](https://github.com/RyanDanielWillis/Angry-Voip-Scanner/actions)
 
-**Diagnoses VoIP problems and security risks with plain-English fixes.** Scans your PBX/phone system for one-way audio, choppy calls, exposed extensions, and more — then tells you exactly what's wrong and how to fix it.
+**Diagnoses VoIP problems and security risks with plain-English fixes.** 
+Scans your PBX/phone system for one-way audio, choppy calls, exposed extensions, and more — then tells you exactly what's wrong and how to fix it.
   </td></tr>
 </table>
 
