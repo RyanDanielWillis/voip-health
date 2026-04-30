@@ -1,3 +1,5 @@
+![Project Logo](/logo.png)
+
 # Angry VoIP Scanner
 
 [![Python](https://img.shields.io/badge/Python-3.11-blue)](https://python.org)
