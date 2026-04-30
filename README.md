@@ -1,6 +1,6 @@
 <table>
   <tr><td width="100" align="center">
-    ![Project Logo](/logo.png)
+    <img src=/logo.png />
   </td>
   <td>
     # Angry VoIP Scanner
