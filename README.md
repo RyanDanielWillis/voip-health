@@ -21,3 +21,25 @@ python angry_voip_scanner.py scan 192.168.1.100
 ```
 
 **Output:**
+🔍 SCANNING 192.168.1.100...
+❌ ONE-WAY AUDIO DETECTED
+Cause: RTP ports 10000-20000 blocked by firewall
+Fix: Open UDP 10000-20000 + enable SIP ALG
+
+✅ SIP SECURE: ACLs configured correctly
+
+## Features
+- **Network diagnostics**: Ping, traceroute, jitter tests
+- **SIP enumeration**: svmap + custom probes
+- **Security scan**: Open ports, weak auth, container vulns
+- **Root cause analysis**: 20+ job-tested rules
+- **Pipeline ready**: SARIF output for GitHub Actions
+- **Non-technical reports**: HTML + plain English
+
+## Demo
+[![Watch demo](demo.gif)](demo.mp4)
+
+## Why it exists
+Built from real VoIP troubleshooting pain. Tired of "reboot router" answers? This tells you *exactly* what's broken and how to fix it.
+
+⭐ **Star if it saves you a call to support!**
