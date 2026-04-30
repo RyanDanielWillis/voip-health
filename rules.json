@@ -1,0 +1,22 @@
+{
+  "one_way_audio": {
+    "cause": "RTP ports blocked by firewall",
+    "fix": "Open UDP 10000-20000 + enable SIP ALG",
+    "priority": "HIGH"
+  },
+  "choppy_audio": {
+    "cause": "No QoS or jitter buffer",
+    "fix": "Prioritize VoIP (DSCP EF) + increase jitter buffer to 200ms",
+    "priority": "MEDIUM"
+  },
+  "no_registration": {
+    "cause": "NAT keepalive missing",
+    "fix": "Add nat=force_rport,comedia to sip.conf",
+    "priority": "HIGH"
+  },
+  "exposed_extensions": {
+    "cause": "Missing SIP ACLs",
+    "fix": "deny=0.0.0.0/0 permit=192.168.0.0/16",
+    "priority": "CRITICAL"
+  }
+}
