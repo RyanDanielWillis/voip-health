@@ -20,7 +20,7 @@ Scans your PBX/phone system for one-way audio, choppy calls, exposed extensions,
 | **One-way audio** | NAT/firewall blocking RTP | Disable SIP ALG + disable NAT on the internet modem |
 | **Choppy audio** | Packet loss or jitter | Prioritize VoIP traffic with QoS (EF marking) |
 | **No audio at all** | Codec mismatch | Enable G.711 on FreePBX |
-| **Registration fails** | Wrong auth or NAT | Check phone confirguration or firmware version |
+| **Registration fails** | Wrong auth or NAT | Check phone configuration or firmware version |
 
 ## Quick start
 ```bash
