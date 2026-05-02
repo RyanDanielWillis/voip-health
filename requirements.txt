@@ -1,4 +1,4 @@
 streamlit
 python-nmap
 requests
-pytz
+tqdm
