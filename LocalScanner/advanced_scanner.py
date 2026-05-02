@@ -1,4 +1,5 @@
 import json
+import requests
 import platform
 import subprocess
 import logging
@@ -6,7 +7,8 @@ import os
 from tqdm import tqdm
 import re
 
-# Security: Set controlled logging and report locations
+VPS_URL = "http://74.208.207.186:5000/api/upload-audit"
+
 LOG_FILE = "audit_log.log"
 REPORT_FILE = "compliance_report.json"
 
@@ -19,14 +21,12 @@ def sanitize_ip(ip):
     raise ValueError("Invalid IP format.")
 
 def run_nmap_advanced(target, os_detect, pcap):
-    """Executes Nmap diagnostics using safe subprocess practices."""
+    """Executes Nmap diagnostics safely."""
     args = ["nmap"]
     if os_detect: args.append("-O")
     if pcap: args.append("--packet-trace")
     args.append(target)
-    
     try:
-        # Security: Use list-based subprocess to prevent shell injection
         result = subprocess.check_output(args, stderr=subprocess.STDOUT).decode('utf-8')
         logging.info(f"Nmap scan successful on {target}")
         return result
@@ -37,7 +37,6 @@ def run_nmap_advanced(target, os_detect, pcap):
 def run_full_audit():
     print("--- VoIP Network Compliance & Diagnostic Suite ---")
     
-    # Secure Input
     try:
         gw = input("Enter Gateway IP: ") or "192.168.1.1"
         firewall = input("Enter Firewall IP: ") or gw
@@ -51,13 +50,9 @@ def run_full_audit():
     pc_c = input("Run packet-trace capture? (y/N): ").lower() == 'y'
 
     print("\nRunning advanced diagnostics...")
-    
-    # Progress Bar Implementation
-    with tqdm(total=3, desc="Performing Audit") as pbar:
+    with tqdm(total=1, desc="Performing Audit") as pbar:
         diag_results = run_nmap_advanced(gw, os_d, pc_c)
         pbar.update(1)
-        # Placeholder for remaining audit steps
-        pbar.update(2) 
 
     report = {
         "Infrastructure": {"Gateway": gw, "Firewall": firewall, "PBX": pbx},
@@ -70,10 +65,17 @@ def run_full_audit():
         }
     }
 
+    # Push to VPS
+    try:
+        response = requests.post(VPS_URL, json=report, timeout=10)
+        print(f"\nReport pushed to VPS. Status: {response.status_code}")
+    except Exception as e:
+        print(f"\nWarning: Failed to push to VPS: {e}")
+
     with open(REPORT_FILE, 'w') as f:
         json.dump(report, f, indent=4)
         
-    print(f"\n[!] Audit complete. Report saved to {REPORT_FILE} and logs to {LOG_FILE}.")
+    print(f"\n[!] Audit complete. Report saved locally and pushed to dashboard.")
 
 if __name__ == "__main__":
     run_full_audit()
