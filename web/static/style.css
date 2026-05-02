@@ -1,5 +1,11 @@
-/* ===== Theme variables ===== */
-:root {
+/* ===== Theme variables =====
+ * Default (no attribute) and explicit dark are identical.
+ * Light theme is keyed off the data-theme attribute on <html>, set
+ * before first paint by an inline snippet in base.html and toggled by
+ * theme.js.
+ */
+:root,
+:root[data-theme="dark"] {
     --bg: #0f1115;
     --surface: #181b22;
     --surface-2: #1f232c;
@@ -18,7 +24,7 @@
     --shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
 }
 
-.light-mode {
+:root[data-theme="light"] {
     --bg: #f4f6f9;
     --surface: #ffffff;
     --surface-2: #f0f2f6;
@@ -57,7 +63,11 @@ body {
 a { color: var(--link); text-decoration: none; }
 a:hover { color: var(--link-hover); text-decoration: underline; }
 
-/* ===== Site header / nav ===== */
+/* ===== Site header / nav =====
+ * Single-row professional bar: brand on the left, nav links centered
+ * by flow, actions (GitHub + theme toggle) on the right. ~56px tall on
+ * desktop. Wraps gracefully on narrow viewports without exploding height.
+ */
 .site-header {
     position: sticky;
     top: 0;
@@ -70,47 +80,46 @@ a:hover { color: var(--link-hover); text-decoration: underline; }
 .site-header .header-inner {
     max-width: 1100px;
     margin: 0 auto;
-    padding: 10px 20px;
+    padding: 0 20px;
+    height: 56px;
     display: flex;
     align-items: center;
-    gap: 16px;
-    flex-wrap: wrap;
+    gap: 18px;
 }
 
 .brand {
-    display: flex;
+    display: inline-flex;
     align-items: center;
     gap: 10px;
     color: var(--text);
     font-weight: 700;
-    font-size: 1.05rem;
+    font-size: 1rem;
     letter-spacing: 0.2px;
     text-decoration: none;
+    line-height: 1;
 }
 .brand:hover { text-decoration: none; color: var(--text); }
 .brand img {
-    height: 32px;
-    width: 32px;
+    height: 28px;
+    width: 28px;
     object-fit: contain;
     border-radius: 6px;
+    display: block;
 }
-
 .brand-name { white-space: nowrap; }
 
 .nav-links {
     display: flex;
     align-items: center;
-    gap: 6px;
-    margin-left: 12px;
-    flex-wrap: wrap;
+    gap: 4px;
 }
-
 .nav-links a {
     color: var(--text-muted);
     padding: 6px 10px;
     border-radius: 6px;
-    font-size: 0.95rem;
+    font-size: 0.92rem;
     font-weight: 500;
+    line-height: 1.2;
 }
 .nav-links a:hover {
     color: var(--text);
@@ -122,12 +131,11 @@ a:hover { color: var(--link-hover); text-decoration: underline; }
     background: var(--surface-2);
 }
 
-.nav-spacer { flex: 1; }
-
 .header-actions {
+    margin-left: auto;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
 }
 
 .icon-link {
@@ -137,24 +145,31 @@ a:hover { color: var(--link-hover); text-decoration: underline; }
     color: var(--text-muted);
     padding: 6px 10px;
     border-radius: 6px;
-    font-size: 0.9rem;
+    font-size: 0.88rem;
+    line-height: 1.2;
 }
 .icon-link:hover {
     color: var(--text);
     background: var(--surface-2);
     text-decoration: none;
 }
-.icon-link svg { width: 18px; height: 18px; }
+.icon-link svg {
+    width: 16px;
+    height: 16px;
+    flex: 0 0 16px;
+    display: block;
+}
 
 .toggle-btn {
     cursor: pointer;
     background: var(--surface-2);
     color: var(--text);
     border: 1px solid var(--border);
-    padding: 6px 12px;
+    padding: 5px 10px;
     border-radius: 6px;
-    font-size: 0.9rem;
+    font-size: 0.85rem;
     font-weight: 500;
+    line-height: 1.2;
     transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 .toggle-btn:hover { background: var(--bg); border-color: var(--text-muted); }
@@ -324,9 +339,25 @@ label { display: block; font-size: 0.9rem; color: var(--text-muted); margin-bott
 
 /* ===== Responsive ===== */
 @media (max-width: 720px) {
-    .site-header .header-inner { padding: 10px 14px; }
-    .nav-links { margin-left: 0; }
+    .site-header .header-inner {
+        padding: 0 14px;
+        gap: 10px;
+        height: 52px;
+    }
+    .brand-name { font-size: 0.95rem; }
+    .brand img { height: 24px; width: 24px; }
+    .nav-links { gap: 2px; }
+    .nav-links a { padding: 5px 8px; font-size: 0.88rem; }
+    .icon-link-label { display: none; }
+    .icon-link { padding: 6px 8px; }
+    .toggle-btn { padding: 5px 8px; font-size: 0.82rem; }
     .container { margin: 16px 12px; padding: 18px; }
     h1 { font-size: 1.5rem; }
-    .nav-spacer { flex-basis: 100%; height: 0; }
+}
+
+@media (max-width: 420px) {
+    .nav-links a:not(.active) {
+        /* keep all links visible but tighten further */
+        padding: 5px 6px;
+    }
 }
