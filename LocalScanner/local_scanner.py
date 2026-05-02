@@ -52,11 +52,17 @@ def run_audit(enable_os=False):
     subnets = ['192.168.1.0/24', '192.168.41.0/24']
     scan_args = "--unprivileged -sT -sV" + (" -O" if enable_os else "")
     
-    nm = nmap.PortScanner(nmap_path=nmap_bin)
+    # 1. Initialize empty
+    nm = nmap.PortScanner()
+    
+    # 2. Manually set the path attribute (this bypasses the constructor)
+    nm.nmap_path = nmap_bin
+    
     full_report = {}
 
     for subnet in subnets:
         try:
+            # Now run the scan normally
             nm.scan(hosts=subnet, arguments=scan_args)
             for host in nm.all_hosts():
                 h_data = nm[host]
@@ -65,7 +71,7 @@ def run_audit(enable_os=False):
             logging.error(f"Error scanning {subnet}: {e}")
             
     print(json.dumps(full_report, indent=2))
-    logging.info(f"Report: {json.dumps(full_report)}\\n\\n")
+    logging.info(f"Report: {json.dumps(full_report)}\n\n")
 
 if __name__ == "__main__":
     os_choice = input("Enable OS discovery? (y/N): ").lower() == 'y'
