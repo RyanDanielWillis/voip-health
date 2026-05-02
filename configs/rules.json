@@ -1,9 +1,14 @@
 {
-    "VoIP": {
-        "Consistent NAT": {"cmd": "nmap -sV --script nat-* --top-ports 50", "bad": "consistent.*on", "fix": "Disable NAT consistency."},
-        "SIP ALG": {"cmd": "nmap -sV -p 5060 --script sip-methods", "bad": "sip-alg", "fix": "Disable SIP ALG on firewall."}
+    "Network Topology": {
+        "Consistent NAT": {"cmd": "nmap", "fix": "Disable Consistent NAT on router/firewall."},
+        "Starbox Direct": {"cmd": "traceroute", "fix": "Ensure Starbox is connected directly to modem."}
+    },
+    "Core Voice Ports": {
+        "SIP (5060)": {"cmd": "nmap", "fix": "Open UDP 5060 bi-directional."},
+        "RTP (10k-20k)": {"cmd": "nmap", "fix": "Open UDP 10000-20000 bi-directional."},
+        "ESL (8021)": {"cmd": "nmap", "fix": "Open TCP 8021."},
+        "HTTPS (443)": {"cmd": "nmap", "fix": "Open TCP 443."}
     }
-
   "ISP Whitelist": {
     "cmd": "curl -s https://checkip.amazonaws.com",
     "bad": "^(?!199\\.15\\.18[0-2]\\.).*",
