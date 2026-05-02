@@ -6,7 +6,7 @@ import sys
 from datetime import datetime, timedelta, timezone
 from tqdm import tqdm 
 
-log_path = os.path.join(os.path.dirname(sys.executable), 'scan.log')
+log_path = os.path.join(os.path.dirname(sys.executable), 'scanlog.log')
 logging.basicConfig(filename=log_path, level=logging.INFO, format='%(asctime)s EST - %(levelname)s - %(message)s\n')
 
 def get_est_time(*args):
