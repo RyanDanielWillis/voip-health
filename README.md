@@ -6,7 +6,6 @@
    <h1>Angry VoIP Scanner</h1>
 
 [![Python](https://img.shields.io/badge/Python-3.11-blue)](https://python.org)
-[![GitHub Action](https://github.com/RyanDanielWillis/angry-voip-scanner/actions/workflows/main.yml/badge.svg)](https://github.com/RyanDanielWillis/angry-voip-scanner/actions)
 
 **Diagnose VoIP problems and security risks with plain-english fixes.** <br>
 Scans your PBX/phone system for one-way audio, choppy calls, exposed extensions, and more — then tells you exactly what's wrong and how to fix it.
