@@ -2,3 +2,4 @@ streamlit
 python-nmap
 requests
 tqdm
+pandas
