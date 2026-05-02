@@ -1,0 +1,52 @@
+import os
+
+# Create the CSS directory and file inside /home/intsh0e/voipscan_api/web/static
+static_dir = "/home/intsh0e/voipscan_api/web/static"
+css_file = os.path.join(static_dir, "style.css")
+
+if not os.path.exists(static_dir):
+    os.makedirs(static_dir)
+
+css_content = """
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #f4f7f6;
+    color: #333;
+    line-height: 1.6;
+    margin: 0;
+    padding: 20px;
+}
+
+.container {
+    max-width: 900px;
+    margin: auto;
+    background: #fff;
+    padding: 30px;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+
+h1 { color: #d9534f; border-bottom: 2px solid #d9534f; padding-bottom: 10px; }
+
+table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+th, td { padding: 12px; border: 1px solid #ddd; text-align: left; }
+th { background-color: #337ab7; color: white; }
+
+.cta-button {
+    display: inline-block;
+    padding: 12px 25px;
+    background: #337ab7;
+    color: white;
+    text-decoration: none;
+    border-radius: 5px;
+    font-weight: bold;
+    transition: background 0.3s;
+}
+
+.cta-button:hover { background: #23527c; }
+"""
+
+with open(css_file, "w") as f:
+    f.write(css_content)
+
+print(f"CSS file created at: {css_file}")
