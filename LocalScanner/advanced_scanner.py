@@ -7,7 +7,8 @@ import os
 from tqdm import tqdm
 import re
 
-VPS_URL = "http://74.208.207.186:5000/api/upload-audit"
+# IMPORTANT: Update this with your actual VPS domain or IP
+VPS_URL = "http://your-vps-domain-or-ip:5000/api/upload-audit"
 
 LOG_FILE = "audit_log.log"
 REPORT_FILE = "compliance_report.json"
@@ -75,7 +76,7 @@ def run_full_audit():
     with open(REPORT_FILE, 'w') as f:
         json.dump(report, f, indent=4)
         
-    print(f"\n[!] Audit complete. Report saved locally and pushed to dashboard.")
+    print(f"\n[!] Audit complete. Report saved locally as {REPORT_FILE} and pushed to dashboard.")
 
 if __name__ == "__main__":
     run_full_audit()
