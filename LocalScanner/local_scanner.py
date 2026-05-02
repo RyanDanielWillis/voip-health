@@ -8,7 +8,7 @@ import pytz
 
 # Setup logging
 log_path = os.path.join(os.path.dirname(sys.executable), 'scan.log')
-logging.basicConfig(filename=log_path, level=logging.INFO, format='%(asctime)s EST - %(levelname)s - %(message)s')
+logging.basicConfig(filename=log_path, level=logging.INFO, format='%(asctime)s EST - %(levelname)s - %(message)s\n')
 
 def analyze_voip_health(host_data):
     analysis = []
@@ -62,7 +62,7 @@ def run_audit(enable_os=False, capture_pcap=False):
             
     # Output clearly
     print(json.dumps(full_report, indent=2))
-    logging.info(f"Report: {json.dumps(full_report)}")
+    logging.info(f"Report: {json.dumps(full_report)}\n")
 
 if __name__ == "__main__":
     print("--- VoipScan Professional Audit ---")
