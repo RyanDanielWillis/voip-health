@@ -52,8 +52,7 @@ def run_audit(enable_os, capture_pcap):
     logging.info(f"Report: {json.dumps(full_report)}")
 
 if __name__ == "__main__":
-    print("--- VoIPScan Local Auditor ---")
-    os_c = input("Enable OS discovery? (y/N): ").lower() == 'y'
-    pc_c = input("Run deep PCAP capture? (y/N): ").lower() == 'y'
+    os_c = input("Enable OS discovery? (y or n): ").lower() == 'y'
+    pc_c = input("Run deep PCAP capture? (y or n): ").lower() == 'y'
     run_audit(os_c, pc_c)
     input("\nScan complete. Press Enter to exit...")
