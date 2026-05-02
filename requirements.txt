@@ -1,7 +1,3 @@
-svmap
-pysipp
-scapy
-trivy
-click
-pytest
-jinja2  # HTML reports
+streamlit
+nmap-python
+pandas
