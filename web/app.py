@@ -12,6 +12,10 @@ def init_db():
     conn.commit()
     conn.close()
 
+@app.route("/")
+def index():
+    return render_template("index.html")
+
 @app.route('/api/upload-audit', methods=['POST'])
 def upload_audit():
     data = request.get_json()
