@@ -1,52 +1,87 @@
-import os
+js_content = """
+function toggleTheme() {
+    const body = document.body;
+    body.classList.toggle('light-mode');
+    
+    // Save preference
+    if (body.classList.contains('light-mode')) {
+        localStorage.setItem('theme', 'light');
+    } else {
+        localStorage.setItem('theme', 'dark');
+    }
+}
 
-# Create the CSS directory and file inside /home/intsh0e/voipscan_api/web/static
-static_dir = "/home/intsh0e/voipscan_api/web/static"
-css_file = os.path.join(static_dir, "style.css")
+// Load saved preference
+window.onload = () => {
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme === 'light') {
+        document.body.classList.add('light-mode');
+    }
+};
+"""
 
-if not os.path.exists(static_dir):
-    os.makedirs(static_dir)
+js_file = "/home/intsh0e/voipscan_api/web/static/theme.js"
+with open(js_file, "w") as f:
+    f.write(js_content)
 
+# Update CSS to support the light-mode class
 css_content = """
+:root {
+    --bg: #121212;
+    --container-bg: #1e1e1e;
+    --text: #e0e0e0;
+    --header-border: #d9534f;
+    --link: #337ab7;
+}
+
+.light-mode {
+    --bg: #f4f7f6;
+    --container-bg: #ffffff;
+    --text: #333333;
+    --header-border: #d9534f;
+    --link: #337ab7;
+}
+
 body {
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    background-color: #f4f7f6;
-    color: #333;
-    line-height: 1.6;
-    margin: 0;
+    font-family: sans-serif;
+    background-color: var(--bg);
+    color: var(--text);
     padding: 20px;
+    transition: background 0.3s, color 0.3s;
 }
 
 .container {
     max-width: 900px;
     margin: auto;
-    background: #fff;
+    background: var(--container-bg);
     padding: 30px;
     border-radius: 8px;
-    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    box-shadow: 0 4px 6px rgba(0,0,0,0.3);
 }
 
-h1 { color: #d9534f; border-bottom: 2px solid #d9534f; padding-bottom: 10px; }
+header {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    border-bottom: 2px solid var(--header-border);
+    padding-bottom: 10px;
+}
 
-table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-th, td { padding: 12px; border: 1px solid #ddd; text-align: left; }
-th { background-color: #337ab7; color: white; }
+header img { height: 60px; }
+h1 { color: #d9534f; }
 
-.cta-button {
-    display: inline-block;
-    padding: 12px 25px;
-    background: #337ab7;
+.toggle-btn {
+    cursor: pointer;
+    background: #444;
     color: white;
-    text-decoration: none;
+    border: none;
+    padding: 10px;
     border-radius: 5px;
-    font-weight: bold;
-    transition: background 0.3s;
+    margin-bottom: 20px;
 }
-
-.cta-button:hover { background: #23527c; }
 """
 
-with open(css_file, "w") as f:
+with open("/home/intsh0e/voipscan_api/web/static/style.css", "w") as f:
     f.write(css_content)
 
-print(f"CSS file created at: {css_file}")
+print("CSS and JS updated for toggle theme.")
