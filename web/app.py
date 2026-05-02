@@ -31,12 +31,11 @@ def upload_audit():
 def dashboard():
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
-    cursor.execute('SELECT * FROM audits ORDER BY id DESC')
-    rows = cursor.fetchall()
+    cursor.execute('SELECT id, data FROM audits ORDER BY id DESC')
+    # Fetch rows as dicts for easy access in Jinja
+    rows = [{"id": r[0], "data": json.loads(r[1])} for r in cursor.fetchall()]
     conn.close()
-    
-    # Simple display of the records
-    return jsonify([{"id": r[0], "data": json.loads(r[1])} for r in rows])
+    return render_template('dashboard.html', data=rows)
 
 init_db()
 if __name__ == '__main__':
