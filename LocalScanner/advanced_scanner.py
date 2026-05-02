@@ -8,7 +8,7 @@ from tqdm import tqdm
 import re
 
 # IMPORTANT: Update this with your actual VPS domain or IP
-VPS_URL = "http://74.208.207.186//api/upload-audit"
+VPS_URL = "http://74.208.207.186/api/upload-audit"
 
 LOG_FILE = "audit_log.log"
 REPORT_FILE = "compliance_report.json"
