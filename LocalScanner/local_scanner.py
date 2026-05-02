@@ -9,6 +9,23 @@ from datetime import datetime
 log_path = os.path.join(os.path.dirname(sys.executable), 'scan.log')
 logging.basicConfig(filename=log_path, level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
+def get_nmap_path():
+    base_dir = os.path.dirname(sys.executable)
+    # Check both 'Nmap' (what you have) and 'nmap'
+    for folder in ['Nmap', 'nmap']:
+        path = os.path.join(base_dir, folder, 'nmap.exe')
+        if os.path.exists(path):
+            return path
+    return None
+
+def run_local_audit(capture_pcap=False):
+    nmap_bin = get_nmap_path()
+    if not nmap_bin:
+        error_msg = "Error: Could not find nmap.exe in the 'Nmap' folder!"
+        print(error_msg)
+        logging.error(error_msg)
+        return
+
 def run_local_audit(capture_pcap=False):
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     
