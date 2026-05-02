@@ -14,12 +14,9 @@ def init_db():
 @app.route('/api/upload-audit', methods=['POST'])
 def upload_audit():
     data = request.get_json()
-    conn = sqlite3.connect('audit_data.db')
-    conn.execute('INSERT INTO audits (data) VALUES (?)', (str(data),))
-    conn.commit()
-    conn.close()
+    # Process your data here...
     return jsonify({"status": "success"}), 200
 
 init_db()
 if __name__ == '__main__':
-    app.run(port=5000)
+    app.run(host='127.0.0.1', port=5000)
