@@ -4,55 +4,50 @@ import logging
 import os
 import sys
 from datetime import datetime
+import pytz
 
-# Setup logging
+# Setup logging with EST
+def get_est_time(*args):
+    utc_dt = datetime.now(pytz.utc)
+    est_dt = utc_dt.astimezone(pytz.timezone('US/Eastern'))
+    return est_dt.timetuple()
+
+logging.Formatter.converter = get_est_time
 log_path = os.path.join(os.path.dirname(sys.executable), 'scan.log')
-logging.basicConfig(filename=log_path, level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(filename=log_path, level=logging.INFO, 
+                    format='%(asctime)s EST - %(levelname)s - %(message)s')
 
 def get_nmap_path():
     base_dir = os.path.dirname(sys.executable)
-    # Check both 'Nmap' (what you have) and 'nmap'
     for folder in ['Nmap', 'nmap']:
         path = os.path.join(base_dir, folder, 'nmap.exe')
-        if os.path.exists(path):
-            return path
+        if os.path.exists(path): return path
     return None
 
 def run_local_audit(capture_pcap=False):
+    logging.info("--- Starting Audit Session ---")
     nmap_bin = get_nmap_path()
     if not nmap_bin:
-        error_msg = "Error: Could not find nmap.exe in the 'Nmap' folder!"
-        print(error_msg)
-        logging.error(error_msg)
-        return
-
-def run_local_audit(capture_pcap=False):
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    
-    if capture_pcap:
-        pcap_filename = f"capture_{timestamp}.pcap"
-        scan_args = f"-sU -sS --packet-trace --send-eth -oG - --script-args=packet-capture.file={pcap_filename}"
-        logging.info(f"Starting PCAP capture to: {pcap_filename}")
-        print(f"Recording to {pcap_filename}...")
-    else:
-        scan_args = "--unprivileged -sT -p 22,80,443,5060,8021,5038,5280,5281,9080,1935,59000-60000,8181,8182,8183"
-        logging.info("Starting standard portable scan...")
+        msg = "FATAL: Could not find nmap.exe in Nmap/ folder!"
+        print(msg); logging.error(msg); return
 
     try:
-        # SIMPLEST APPROACH: No arguments, rely on the batch file's PATH modification
-        nm = nmap.PortScanner()
-        nm.scan(hosts='192.168.1.0/24', arguments=scan_args)
+        nm = nmap.PortScanner(nmap_path=nmap_bin)
+        # Scan just the gateway first to test speed
+        hosts = '192.168.1.1' 
+        args = "--unprivileged -sT -p 80,443"
+        
+        logging.info(f"Scanning {hosts} with args: {args}")
+        nm.scan(hosts=hosts, arguments=args)
         
         results = {host: nm[host] for host in nm.all_hosts()}
-        json_output = json.dumps(results, indent=2)
-        print(json_output)
-        logging.info(f"Scan complete. Data: {json_output}")
+        logging.info(f"Scan Finished. Results: {json.dumps(results)}")
+        print(json.dumps(results, indent=2))
+        print("\nScan Finished. Check scan.log for details.")
     except Exception as e:
-        error_msg = f"Scan error: {str(e)}"
-        logging.error(error_msg)
-        print(error_msg)
+        logging.error(f"Scan Exception: {str(e)}")
+        print(f"Exception: {e}")
 
 if __name__ == "__main__":
-    choice = input("Run deep PCAP capture? (requires Admin) (y/N): ").lower()
-    run_local_audit(capture_pcap=(choice == 'y'))
+    run_local_audit()
     input("\nPress Enter to exit...")
