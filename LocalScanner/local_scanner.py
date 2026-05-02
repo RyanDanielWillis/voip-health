@@ -6,48 +6,47 @@ import sys
 from datetime import datetime
 import pytz
 
-# Setup logging with EST
-def get_est_time(*args):
-    utc_dt = datetime.now(pytz.utc)
-    est_dt = utc_dt.astimezone(pytz.timezone('US/Eastern'))
-    return est_dt.timetuple()
-
-logging.Formatter.converter = get_est_time
+# Setup logging
 log_path = os.path.join(os.path.dirname(sys.executable), 'scan.log')
-logging.basicConfig(filename=log_path, level=logging.INFO, 
-                    format='%(asctime)s EST - %(levelname)s - %(message)s')
+logging.basicConfig(filename=log_path, level=logging.INFO, format='%(asctime)s EST - %(levelname)s - %(message)s')
 
-def get_nmap_path():
-    base_dir = os.path.dirname(sys.executable)
-    for folder in ['Nmap', 'nmap']:
-        path = os.path.join(base_dir, folder, 'nmap.exe')
-        if os.path.exists(path): return path
-    return None
+def run_audit(enable_os=False, capture_pcap=False):
+    # Path to nmap folder
+    nmap_bin = os.path.join(os.path.dirname(sys.executable), 'Nmap', 'nmap.exe')
+    subnets = ['192.168.1.0/24', '192.168.41.0/24']
+    
+    # Base arguments
+    scan_args = "--unprivileged -sT -sV"
+    if enable_os:
+        scan_args += " -O"
+    if capture_pcap:
+        scan_args += " -sU --packet-trace"
+    
+    print(f"Executing: nmap {scan_args} ...")
+    nm = nmap.PortScanner(nmap_path=nmap_bin)
+    full_report = {}
 
-def run_local_audit(capture_pcap=False):
-    logging.info("--- Starting Audit Session ---")
-    nmap_bin = get_nmap_path()
-    if not nmap_bin:
-        msg = "FATAL: Could not find nmap.exe in Nmap/ folder!"
-        print(msg); logging.error(msg); return
-
-    try:
-        nm = nmap.PortScanner(nmap_path=nmap_bin)
-        # Scan just the gateway first to test speed
-        hosts = '192.168.1.1' 
-        args = "--unprivileged -sT -p 80,443"
-        
-        logging.info(f"Scanning {hosts} with args: {args}")
-        nm.scan(hosts=hosts, arguments=args)
-        
-        results = {host: nm[host] for host in nm.all_hosts()}
-        logging.info(f"Scan Finished. Results: {json.dumps(results)}")
-        print(json.dumps(results, indent=2))
-        print("\nScan Finished. Check scan.log for details.")
-    except Exception as e:
-        logging.error(f"Scan Exception: {str(e)}")
-        print(f"Exception: {e}")
+    for subnet in subnets:
+        print(f"Auditing subnet: {subnet}...")
+        try:
+            nm.scan(hosts=subnet, arguments=scan_args)
+            for host in nm.all_hosts():
+                h_data = nm[host]
+                full_report[host] = {
+                    'os': h_data.get('osmatch', 'Unknown') if enable_os else 'Disabled',
+                    'status': h_data.status(),
+                    'ports': h_data.all_tcp()
+                }
+        except Exception as e:
+            logging.error(f"Error scanning {subnet}: {e}")
+            
+    print(json.dumps(full_report, indent=2))
+    logging.info(f"Audit Complete. Report: {json.dumps(full_report)}")
 
 if __name__ == "__main__":
-    run_local_audit()
-    input("\nPress Enter to exit...")
+    print("--- VoIPScan Local Auditor ---")
+    os_choice = input("Enable OS discovery? (y/N): ").lower() == 'y'
+    pcap_choice = input("Run deep PCAP capture? (y/N): ").lower() == 'y'
+    
+    run_audit(enable_os=os_choice, capture_pcap=pcap_choice)
+    input("\nScan complete. Press Enter to exit...")
