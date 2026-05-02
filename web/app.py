@@ -16,6 +16,11 @@ def init_db():
 def index():
     return render_template("index.html")
 
+@app.route('/static/<path:path>')
+def send_static(path):
+    # This manually maps /static/ to your local directory
+    return send_from_directory('/home/intsh0e/voipscan_api/web/static', path)
+
 @app.route('/api/upload-audit', methods=['POST'])
 def upload_audit():
     data = request.get_json()
