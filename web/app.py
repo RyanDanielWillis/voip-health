@@ -1,32 +1,24 @@
-import streamlit as st
-import sys
-import os
-import json
+import sqlite3
+from flask import Flask, request, jsonify
 
-# Add parent to path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from scanner.engine import run_nmap_check
+app = Flask(__name__)
 
-st.title("Angry VoIP Scanner")
+# Initialize database
+def init_db():
+    conn = sqlite3.connect('audit_data.db')
+    conn.execute('CREATE TABLE IF NOT EXISTS audits (id INTEGER PRIMARY KEY, data TEXT)')
+    conn.commit()
+    conn.close()
 
-# Tab 1: External Scan (VPS -> Remote)
-tab1, tab2 = st.tabs(["External Network", "Local Network (Agent Data)"])
+@app.route('/api/upload-audit', methods=['POST'])
+def upload_audit():
+    data = request.get_json()
+    conn = sqlite3.connect('audit_data.db')
+    conn.execute('INSERT INTO audits (data) VALUES (?)', (str(data),))
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "success"}), 200
 
-with tab1:
-    st.subheader("Run External Scan")
-    target_ip = st.text_input("Enter Public IP of Starbox")
-    if st.button("Audit Public Gateway"):
-        res = run_nmap_check(target_ip, "5060,10000-20000,8021,22,2222,123,443")
-        st.json(res)
-
-with tab2:
-    st.subheader("Ingest Local Agent Data")
-    st.write("Run `local_scanner.py` on your local network, then paste the JSON output here:")
-    local_data = st.text_area("Paste local JSON results")
-    if st.button("Submit Data"):
-        if local_data:
-            st.session_state.local_results = json.loads(local_data)
-            st.success("Data ingested!")
-        
-    if 'local_results' in st.session_state:
-        st.json(st.session_state.local_results)
+init_db()
+if __name__ == '__main__':
+    app.run(port=5000)
