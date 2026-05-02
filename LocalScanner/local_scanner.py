@@ -6,7 +6,7 @@ import sys
 from datetime import datetime, timedelta, timezone
 from tqdm import tqdm 
 
-log_path = os.path.join(os.path.dirname(sys.executable), 'scanlog.log')
+log_path = os.path.join(os.path.dirname(sys.executable), 'scan.log')
 logging.basicConfig(filename=log_path, level=logging.INFO, format='%(asctime)s EST - %(levelname)s - %(message)s\n')
 
 def get_est_time(*args):
@@ -43,10 +43,10 @@ def run_audit(enable_os, capture_pcap):
         print(f"Scanning subnet: {subnet}...")
         nm.scan(hosts=subnet, arguments=scan_args)
         
-        # tqdm creates the real-time progress bar
         for host in tqdm(nm.all_hosts(), desc=f"Progress for {subnet}"):
             h_data = nm[host]
-            full_report[host] = {'status': h_data.status(), 'analysis': analyze_voip_health(h_data)}
+            # FIXED: Used .state() here
+            full_report[host] = {'status': h_data.state(), 'analysis': analyze_voip_health(h_data)}
             
     print("\n" + json.dumps(full_report, indent=2))
     logging.info(f"Report: {json.dumps(full_report)}")
