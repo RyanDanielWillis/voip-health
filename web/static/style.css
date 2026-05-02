@@ -103,8 +103,8 @@ a:hover { color: var(--link-hover); text-decoration: underline; }
     height: 28px;
     width: 28px;
     object-fit: contain;
-    border-radius: 6px;
     display: block;
+    background: transparent;
 }
 .brand-name { white-space: nowrap; }
 
@@ -189,6 +189,22 @@ h1, h2, h3 { color: var(--text); margin-top: 0; }
 h1 { color: var(--accent); font-size: 1.8rem; }
 h2 { font-size: 1.3rem; }
 h3 { font-size: 1.1rem; }
+
+/* Page title lockup: logo immediately to the left of the H1 text. */
+.page-title {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+}
+.page-title-logo {
+    height: 56px;
+    width: auto;
+    object-fit: contain;
+    background: transparent;
+    flex: 0 0 auto;
+    display: block;
+}
 
 p { color: var(--text); }
 ul { color: var(--text); }
@@ -353,6 +369,8 @@ label { display: block; font-size: 0.9rem; color: var(--text-muted); margin-bott
     .toggle-btn { padding: 5px 8px; font-size: 0.82rem; }
     .container { margin: 16px 12px; padding: 18px; }
     h1 { font-size: 1.5rem; }
+    .page-title { gap: 10px; }
+    .page-title-logo { height: 44px; }
 }
 
 @media (max-width: 420px) {
