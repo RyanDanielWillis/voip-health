@@ -1,0 +1,13 @@
+{
+    "VoIP": {
+        "Consistent NAT": {"cmd": "nmap -sV --script nat-* --top-ports 50", "bad": "consistent.*on", "fix": "Disable NAT consistency."},
+        "SIP ALG": {"cmd": "nmap -sV -p 5060 --script sip-methods", "bad": "sip-alg", "fix": "Disable SIP ALG on firewall."}
+    }
+
+  "ISP Whitelist": {
+    "cmd": "curl -s https://checkip.amazonaws.com",
+    "bad": "^(?!199\\.15\\.18[0-2]\\.).*",
+    "fix": "Ensure ISP whitelists your public IP within ranges 199.15.180.0/22 - 199.15.182.0/22"
+}
+}
+
