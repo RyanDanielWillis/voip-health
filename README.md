@@ -22,11 +22,9 @@ Scans your PBX/phone system for one-way audio, choppy calls, exposed extensions,
 | **No audio at all** | Codec mismatch | Enable G.711 on FreePBX |
 | **Registration fails** | Wrong auth or NAT | Check phone configuration or firmware version |
 
-## Quick start
-```bash
-pip install -r requirements.txt
-python angry_voip_scanner.py scan 192.168.1.100
-```
+## Usage
+`docker build -t scanner .`
+`docker run -p 8501:8501 scanner`
 
 **Output:**
 🔍 SCANNING 192.168.1.100...
