@@ -23,10 +23,10 @@ Scans your PBX/phone system for one-way audio, choppy calls, exposed extensions,
 | **Registration fails** | Wrong auth or NAT | Check phone configuration or firmware version |
 
 ## Usage
-`docker build -t scanner .`
-`docker run -p 8501:8501 scanner`
+Download the portable desktop client from https://voipscan.danielscience.com
+and see results at https://voipscan.danielscience.com/dashboard
 
-**Output:**
+## Output:
 🔍 SCANNING 192.168.1.100...
 ❌ ONE-WAY AUDIO DETECTED
 Cause: RTP ports 10000-20000 blocked by firewall
@@ -43,7 +43,7 @@ Fix: Open UDP 10000-20000 + enable SIP ALG
 - **Non-technical reports**: HTML + plain English
 
 ## Demo
-[![Watch demo](demo.gif)](demo.mp4)
+https://voipscan.danielscience.com
 
 ## Why it exists
 Built from real VoIP troubleshooting pain. Tired of "reboot router" answers? This tells you *exactly* what's broken and how to fix it.
