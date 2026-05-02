@@ -1,0 +1,7 @@
+Check,Command,Good,Bad,Fix
+Consistent NAT,nmap -sV --script nat-* target,Disabled,Enabled,Disable on router/firewall (Cisco: no ip nat service type consistent-type all).
+SIP ALG,nmap -sV -p 5060 target --script sip-*,Disabled,Enabled,Cisco ASA: no fixup protocol sip-udp; pfSense: SIP ALG off.
+H.255,nmap -sV -p 1719 target,Closed,Open,Block UDP 1719 on firewall.
+Starbox direct,traceroute target,Direct,Hop detected,Connect Starbox directly to modem.
+SIP Ports,"nmap -p 5060,5061 -sU target",Open bi-dir,Blocked,Open UDP 5060-5061 bi-dir.
+RTP Ports,nmap -p 10000-20000 -sU target,Open bi-dir,Blocked,Open UDP 10000-20000 bi-dir.
