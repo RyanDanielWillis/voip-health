@@ -1,6 +1,6 @@
 <table>
   <tr><td width="200" align="center">
-    <img src=/static/logo.png />
+    <img src=/web/static/logo.png />
   </td>
   <td>
    <h1>Angry VoIP Scanner</h1>
