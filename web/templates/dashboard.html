@@ -1,22 +1,70 @@
-<!DOCTYPE html>
-<html>
-<script src="{{ url_for('static', filename='theme.js') }}"></script>
-<img src="{{ url_for('static', filename='logo2.png') }}" alt="VoIPScan Logo">
-<head><title>Audit Dashboard</title></head>
-<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-<body>
-    <div class="container">
-    <button class="toggle-btn" onclick="toggleTheme()">Toggle Dark/Light Mode</button>
-    <h1>Audit Records</h1>
-    <table border="1">
-        <tr><th>ID</th><th>Data</th></tr>
-        {% for row in data %}
-        <tr>
-            <td>{{ row.id }}</td>
-            <td>{{ row.data }}</td>
-        </tr>
-        {% endfor %}
-    </table>
+{% extends "base.html" %}
+{% set active_page = "dashboard" %}
+{% block title %}Audit Dashboard | Angry Voip Scanner{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>Audit dashboard</h1>
+    <p class="muted">Structured results from agent uploads. Filter, sort, and export-ready.</p>
+
+    {% if data and data|length > 0 %}
+    <div class="table-wrap">
+        <table class="data-table" id="audits-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Host / IP</th>
+                    <th>Port</th>
+                    <th>Transport</th>
+                    <th>Protocol</th>
+                    <th>Service</th>
+                    <th>Status</th>
+                    <th>Latency (ms)</th>
+                    <th>Severity</th>
+                    <th>Banner</th>
+                    <th>Notes</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in data %}
+                {% set f = row.fields %}
+                <tr>
+                    <td>#{{ row.id }}</td>
+                    <td>{{ f.host or '—' }}</td>
+                    <td>{{ f.port or '—' }}</td>
+                    <td>{{ f.transport or '—' }}</td>
+                    <td>{{ f.protocol or '—' }}</td>
+                    <td>{{ f.service or '—' }}</td>
+                    <td>
+                        {% if f.status %}
+                        <span class="badge {% if f.status in ['up','open','pass','success'] %}success{% elif f.status in ['down','closed','fail','error'] %}danger{% else %}info{% endif %}">{{ f.status }}</span>
+                        {% else %}—{% endif %}
+                    </td>
+                    <td>{{ f.latency_ms if f.latency_ms is not none else '—' }}</td>
+                    <td>
+                        {% if f.severity %}
+                            <span class="severity-{{ f.severity|lower }}">{{ f.severity }}</span>
+                        {% else %}—{% endif %}
+                    </td>
+                    <td>{% if f.banner %}<code class="inline">{{ f.banner }}</code>{% else %}—{% endif %}</td>
+                    <td>{{ f.notes or '—' }}</td>
+                </tr>
+                {% if f.raw %}
+                <tr>
+                    <td colspan="11">
+                        <details>
+                            <summary class="muted">Raw payload for #{{ row.id }}</summary>
+                            <pre class="code-block">{{ f.raw }}</pre>
+                        </details>
+                    </td>
+                </tr>
+                {% endif %}
+                {% endfor %}
+            </tbody>
+        </table>
     </div>
-</body>
-</html>
+    {% else %}
+    <div class="empty">No audits yet. Once a scan is uploaded via <code class="inline">/api/upload-audit</code>, results will appear here.</div>
+    {% endif %}
+</div>
+{% endblock %}
