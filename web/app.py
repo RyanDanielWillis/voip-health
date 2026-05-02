@@ -1,6 +1,6 @@
 import sqlite3
 import json
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 
 app = Flask(__name__)
 DB_NAME = 'audit_data.db'
