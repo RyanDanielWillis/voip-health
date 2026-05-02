@@ -1,3 +1,3 @@
 streamlit
 python-nmap
-pandas
+requests
