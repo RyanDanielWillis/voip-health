@@ -85,6 +85,43 @@ Fix: Open UDP 10000-20000 + enable SIP ALG
 ## Demo
 https://voipscan.danielscience.com
 
+## Server / dashboard
+
+The Flask app under `web/` ingests scans uploaded by the desktop client
+and surfaces them on a real-time dashboard. Key endpoints:
+
+| Endpoint | Purpose |
+|----------|---------|
+| `POST /api/v2/scan/upload` | JSON `ScanReport` upload (auto-called by client) |
+| `POST /api/v2/scan/<id>/artifact` | Multipart upload (raw log, capture file) for a scan |
+| `POST /api/v2/capture/upload` | Standalone capture upload (no scan id) |
+| `GET  /api/v2/scan/<id>/report.json` | Download canonical scan JSON |
+| `GET  /api/v2/artifact/<id>/download` | Download raw artifact file |
+| `GET  /scan/<id>` | Per-scan detail page with KPIs, issues, ports, downloads |
+| `GET  /dashboard` | Aggregate KPIs + latency / jitter trend chart |
+
+### Optional upload token
+
+Set `VOIPSCAN_UPLOAD_TOKEN` on the server to require an
+`Authorization: Bearer <token>` header on every upload. Comparison uses
+`hmac.compare_digest` so it's safe against timing attacks. The desktop
+client picks up the matching token from the `VOIPSCAN_UPLOAD_TOKEN` env
+var or from `~/.config/voipscan/upload.json` (`%LOCALAPPDATA%\VoipScan\upload.json`
+on Windows).
+
+### One-time DB reset (Phase 2)
+
+The new analytics schema lives in `web/db.py`. On the first deploy under
+schema version 2 the previous `audit_data.db` (single `audits` JSON blob)
+is **automatically backed up** to `audit_data.db.legacy_<timestamp>.bak`
+next to the original file, dropped, and recreated with the new tables.
+Subsequent restarts of `gunicorn` (and `update.py` re-runs) are no-ops:
+the version row records that the reset has already happened, so nothing
+gets wiped on every deploy.
+
+The artifact directory defaults to `~/voipscan_api/artifacts/` and can
+be overridden with `VOIPSCAN_ARTIFACT_DIR`.
+
 ## Why it exists
 Built from real VoIP troubleshooting pain. Tired of "reboot router" answers? This tells you *exactly* what's broken and how to fix it.
 

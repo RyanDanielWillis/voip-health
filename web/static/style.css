@@ -586,6 +586,96 @@ label {
     margin-bottom: 4px;
 }
 
+/* ===== Dashboard KPI strip ===== */
+.kpi-strip {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px;
+    margin: 14px 0 18px;
+}
+
+.kpi {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+    text-align: center;
+}
+
+.kpi-num {
+    font-size: 1.7rem;
+    font-weight: 700;
+    color: var(--text);
+    line-height: 1.1;
+}
+
+.kpi-label {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    margin-top: 4px;
+}
+
+.kpi-danger {
+    border-color: rgba(231, 76, 60, 0.45);
+}
+
+.kpi-danger .kpi-num {
+    color: var(--danger);
+}
+
+.kpi-warn {
+    border-color: rgba(245, 166, 35, 0.45);
+}
+
+.kpi-warn .kpi-num {
+    color: var(--warn);
+}
+
+.chart-card {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 18px;
+    margin: 18px 0;
+}
+
+.chart-card h2 {
+    margin-top: 0;
+}
+
+.issue-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.issue {
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin-bottom: 8px;
+    background: var(--surface);
+}
+
+.issue-critical {
+    border-left: 4px solid var(--danger);
+}
+
+.issue-warning {
+    border-left: 4px solid var(--warn);
+}
+
+.issue-info {
+    border-left: 4px solid var(--info);
+}
+
+.issue-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
 /* ===== Empty state ===== */
 .empty {
     text-align: center;

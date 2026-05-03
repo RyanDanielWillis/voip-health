@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+{% set active_page = "dashboard" %}
+{% block title %}Scan #{{ session.id }} — VoIP Health{% endblock %}
+
+{% block content %}
+<div class="container">
+    <p><a href="{{ url_for('dashboard') }}">← Back to dashboard</a></p>
+    <h1>Scan #{{ session.id }}</h1>
+    <p class="muted">{{ session.hostname or 'Unknown host' }} · uploaded {{ session.uploaded_at }}</p>
+
+    <!-- Summary cards -->
+    <div class="kpi-strip">
+        <div class="kpi {% if session.issue_critical %}kpi-danger{% endif %}">
+            <div class="kpi-num">{{ session.issue_critical }}</div>
+            <div class="kpi-label">Critical</div>
+        </div>
+        <div class="kpi {% if session.issue_warning %}kpi-warn{% endif %}">
+            <div class="kpi-num">{{ session.issue_warning }}</div>
+            <div class="kpi-label">Warnings</div>
+        </div>
+        <div class="kpi">
+            <div class="kpi-num">{{ session.port_open }}/{{ session.port_total }}</div>
+            <div class="kpi-label">Open ports</div>
+        </div>
+        <div class="kpi {% if session.port_blocked %}kpi-danger{% endif %}">
+            <div class="kpi-num">{{ session.port_blocked }}</div>
+            <div class="kpi-label">Blocked / filtered</div>
+        </div>
+        <div class="kpi">
+            <div class="kpi-num">{{ "%.1f"|format(session.duration_seconds or 0) }}s</div>
+            <div class="kpi-label">Duration</div>
+        </div>
+    </div>
+
+    <!-- Top-level findings -->
+    <section class="chart-card">
+        <h2>Findings</h2>
+        <div class="kv-grid">
+            <div class="k">SIP ALG</div>
+            <div class="v">{{ session.sip_alg_overall or '—' }}
+                <span class="muted">({{ session.sip_alg_conf or 'inconclusive' }})</span></div>
+            <div class="k">VLAN</div>
+            <div class="v">{{ session.vlan_status or '—' }}
+                <span class="muted">({{ session.vlan_conf or 'inconclusive' }})</span></div>
+            <div class="k">Latency</div>
+            <div class="v">{{ session.latency_status or '—' }} —
+                <span class="muted">{{ session.latency_summary or '' }}</span></div>
+            <div class="k">DHCP assigner</div>
+            <div class="v">{{ session.dhcp_assigner or '—' }}
+                <span class="muted">({{ session.dhcp_conf or 'inconclusive' }})</span></div>
+            <div class="k">Likely cause</div>
+            <div class="v">{{ session.likely_blocking or '—' }}
+                <span class="muted">({{ session.attribution_conf or 'inconclusive' }})</span></div>
+            <div class="k">Public IP</div>
+            <div class="v">{{ session.public_ip or '—' }}</div>
+            <div class="k">Gateway</div>
+            <div class="v">{{ session.gateway_ip or '—' }}
+                {% if session.gateway_vendor %}<span class="muted">({{ session.gateway_vendor }})</span>{% endif %}</div>
+            <div class="k">Problem</div>
+            <div class="v">{{ session.problem or '—' }}</div>
+        </div>
+    </section>
+
+    <!-- Issues -->
+    {% if issues %}
+    <section class="chart-card">
+        <h2>Issues &amp; suggested fixes</h2>
+        <ul class="issue-list">
+            {% for i in issues %}
+            <li class="issue issue-{{ i.severity }}">
+                <div class="issue-head">
+                    <span class="badge {% if i.severity == 'critical' %}danger{% elif i.severity == 'warning' %}warn{% else %}info{% endif %}">{{ i.severity }}</span>
+                    <strong>{{ i.title }}</strong>
+                    <span class="muted">({{ i.confidence }})</span>
+                </div>
+                {% if i.detail %}<p>{{ i.detail }}</p>{% endif %}
+                {% if i.suggested_fix %}
+                <p><span class="muted">Fix: </span>{{ i.suggested_fix }}</p>
+                {% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+    </section>
+    {% endif %}
+
+    <!-- Latency targets -->
+    {% if latency %}
+    <section class="chart-card">
+        <h2>Latency / jitter / packet loss</h2>
+        <div class="table-wrap">
+            <table class="data-table">
+                <thead><tr>
+                    <th>Target</th><th>Host</th><th>Sent</th><th>Recv</th>
+                    <th>Loss %</th><th>min/avg/max RTT</th><th>Jitter</th>
+                    <th>Status</th>
+                </tr></thead>
+                <tbody>
+                {% for t in latency %}
+                <tr>
+                    <td>{{ t.target_label }}</td>
+                    <td>{{ t.target_host }}</td>
+                    <td>{{ t.samples_sent }}</td>
+                    <td>{{ t.samples_received }}</td>
+                    <td>{{ "%.1f"|format(t.packet_loss_pct or 0) }}</td>
+                    <td>{{ "%.1f"|format(t.rtt_min_ms or 0) }} /
+                        {{ "%.1f"|format(t.rtt_avg_ms or 0) }} /
+                        {{ "%.1f"|format(t.rtt_max_ms or 0) }} ms</td>
+                    <td>{{ "%.1f"|format(t.jitter_ms or 0) }} ms</td>
+                    <td>{{ t.status }}</td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+    {% endif %}
+
+    <!-- Ports -->
+    {% if ports %}
+    <section class="chart-card">
+        <h2>Port test results <span class="muted">({{ ports|length }})</span></h2>
+        <div class="table-wrap">
+            <table class="data-table">
+                <thead><tr>
+                    <th>Group</th><th>Service</th><th>Proto</th><th>Port</th>
+                    <th>Destination</th><th>Result</th><th>Confidence</th>
+                    <th>Likely cause</th>
+                </tr></thead>
+                <tbody>
+                {% for p in ports %}
+                <tr>
+                    <td>{{ p.grp }}</td>
+                    <td>{{ p.service }}</td>
+                    <td>{{ p.protocol }}</td>
+                    <td>{{ p.port }}</td>
+                    <td>{{ p.destination }}</td>
+                    <td>
+                        {% if p.result == 'open' %}
+                            <span class="badge success">{{ p.result }}</span>
+                        {% elif p.result in ['closed','filtered','open|filtered','error'] %}
+                            <span class="badge danger">{{ p.result }}</span>
+                        {% else %}
+                            <span class="badge muted">{{ p.result or '—' }}</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ p.confidence }}</td>
+                    <td>{{ p.likely_blocking_dev or '—' }}</td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+    {% endif %}
+
+    <!-- Raw artifacts -->
+    <section class="chart-card" id="artifacts">
+        <h2>Raw data &amp; artifacts</h2>
+        <p class="muted">Download the full ScanReport JSON, raw client log, and any
+            packet captures uploaded with this scan.</p>
+        <ul>
+            <li>
+                <a href="{{ url_for('api_v2_scan_report_json', sid=session.id) }}">
+                    Full ScanReport JSON</a>
+                <span class="muted">— canonical machine-readable scan data.</span>
+            </li>
+            {% for a in artifacts %}
+            <li>
+                <a href="{{ url_for('api_v2_artifact_download', aid=a.id) }}">
+                    {{ a.kind }} · {{ a.filename }}</a>
+                <span class="muted">
+                    — {{ "%.1f"|format((a.bytes or 0)/1024) }} KB
+                    {% if a.engine %} · {{ a.engine }}{% endif %}
+                    · uploaded {{ a.uploaded_at }}
+                </span>
+            </li>
+            {% endfor %}
+        </ul>
+    </section>
+</div>
+{% endblock %}

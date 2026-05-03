@@ -230,11 +230,49 @@ and can be edited freely.
     one section per evidence group, each marked with a colored status
     badge (green / yellow / red / blue / grey) drawn directly on a Tk
     Canvas (no external image assets).
-* **Download Results** saves either the structured JSON (default — same
-  shape `voipscan/upload.py` will eventually POST to the VPS) or a
-  plain-text rendering that includes the summary + raw log.
+* **Download Results** saves either the structured JSON (default — the
+  same shape `voipscan/upload.py` POSTs to the VPS) or a plain-text
+  rendering that includes the summary + raw log.
 * Use **Show Raw Log** / **Show Summary** to switch between views at
   any time.
+
+## Automatic VPS upload
+
+When a scan finishes the client automatically POSTs the structured
+`ScanReport` JSON and the raw log to the VPS dashboard at
+`https://voipscan.danielscience.com/api/v2/scan/upload`. When a packet
+capture stops, the resulting `.pcapng` / `.etl` / `.txt` file is
+automatically uploaded too — associated with the previous scan when one
+was uploaded earlier in the same session, otherwise as a standalone
+capture.
+
+Network failures never break the local scan or capture flow; the local
+files always remain on disk regardless of upload status. Errors are
+logged to the streaming output as `[upload] ...` lines.
+
+### Configuration
+
+| Setting | Env var | JSON field |
+|---------|---------|------------|
+| Endpoint base URL | `VOIPSCAN_VPS_URL` | `vps_url` |
+| Optional bearer token | `VOIPSCAN_UPLOAD_TOKEN` | `token` |
+
+The JSON config file lives at:
+
+* Windows: `%LOCALAPPDATA%\VoipScan\upload.json`
+* Linux / macOS: `~/.config/voipscan/upload.json`
+
+Example `upload.json`:
+
+```json
+{
+  "vps_url": "https://voipscan.danielscience.com",
+  "token": "OPTIONAL_BEARER_TOKEN"
+}
+```
+
+When the server has no `VOIPSCAN_UPLOAD_TOKEN` set, the desktop client
+can leave its `token` blank too — uploads are accepted without auth.
 
 ## Run from source (dev)
 

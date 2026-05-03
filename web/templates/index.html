@@ -61,29 +61,44 @@
     </div>
 
     <h2 style="margin-top: 28px;">Recent scan results</h2>
-    {% if recent_audits and recent_audits|length > 0 %}
+    {% if recent_sessions and recent_sessions|length > 0 %}
     <div class="cards">
-        {% for audit in recent_audits %}
-        {% set f = audit.fields %}
+        {% for s in recent_sessions %}
         <div class="card">
             <div class="card-header">
                 <div class="card-title">
-                    {% if f.host %}{{ f.host }}{% else %}Audit{% endif %}
-                    {% if f.port %}<span class="muted">:{{ f.port }}</span>{% endif %}
+                    <a href="{{ url_for('scan_detail', sid=s.id) }}">{{ s.hostname or 'Scan' }}</a>
+                    {% if s.public_ip %}<span class="muted">{{ s.public_ip }}</span>{% endif %}
                 </div>
-                <span class="card-id">#{{ audit.id }}</span>
+                <span class="card-id">#{{ s.id }}</span>
             </div>
             <div class="kv-grid">
-                {% if f.protocol %}<div class="k">Protocol</div><div class="v">{{ f.protocol }}</div>{% endif %}
-                {% if f.service  %}<div class="k">Service</div><div class="v">{{ f.service }}</div>{% endif %}
-                {% if f.transport%}<div class="k">Transport</div><div class="v">{{ f.transport }}</div>{% endif %}
-                {% if f.status   %}<div class="k">Status</div><div class="v">
-                    <span class="badge {% if f.status in ['up','open','pass','success'] %}success{% elif f.status in ['down','closed','fail','error'] %}danger{% else %}info{% endif %}">{{ f.status }}</span>
-                </div>{% endif %}
-                {% if f.latency_ms is not none %}<div class="k">Latency</div><div class="v">{{ f.latency_ms }} ms</div>{% endif %}
-                {% if f.severity %}<div class="k">Severity</div><div class="v severity-{{ f.severity|lower }}">{{ f.severity }}</div>{% endif %}
-                {% if f.banner   %}<div class="k">Banner</div><div class="v"><code class="inline">{{ f.banner }}</code></div>{% endif %}
-                {% if f.notes    %}<div class="k">Notes</div><div class="v">{{ f.notes }}</div>{% endif %}
+                <div class="k">Uploaded</div><div class="v">{{ s.uploaded_at }}</div>
+                {% if s.gateway_ip %}<div class="k">Gateway</div><div class="v">{{ s.gateway_ip }}</div>{% endif %}
+                <div class="k">SIP ALG</div><div class="v">
+                    {% if s.sip_alg_overall == 'likely_on' %}
+                        <span class="badge danger">likely on</span>
+                    {% elif s.sip_alg_overall == 'likely_off' %}
+                        <span class="badge success">off</span>
+                    {% else %}
+                        <span class="badge muted">{{ s.sip_alg_overall or '—' }}</span>
+                    {% endif %}
+                </div>
+                <div class="k">Latency</div><div class="v">
+                    {% if s.latency_status == 'bad' %}<span class="badge danger">bad</span>
+                    {% elif s.latency_status == 'warn' %}<span class="badge warn">warn</span>
+                    {% elif s.latency_status %}<span class="badge success">{{ s.latency_status }}</span>
+                    {% else %}—{% endif %}
+                </div>
+                <div class="k">Issues</div><div class="v">
+                    {% if s.issue_critical %}<span class="badge danger">{{ s.issue_critical }} crit</span>{% endif %}
+                    {% if s.issue_warning %}<span class="badge warn">{{ s.issue_warning }} warn</span>{% endif %}
+                    {% if not s.issue_critical and not s.issue_warning %}<span class="badge success">clean</span>{% endif %}
+                </div>
+                <div class="k">Ports</div><div class="v">
+                    {{ s.port_open }}/{{ s.port_total }} open
+                    {% if s.port_blocked %}<span class="badge danger">{{ s.port_blocked }} blocked</span>{% endif %}
+                </div>
             </div>
         </div>
         {% endfor %}

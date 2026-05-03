@@ -32,6 +32,7 @@ from . import (
     logger,
     paths,
     scanner,
+    upload as upload_mod,
 )
 from .logger import get_logger, log_exception
 from .report import FormInputs, ScanReport
@@ -102,6 +103,9 @@ class VoipScanApp:
         self._last_results: list[dict] = []  # legacy nmap dicts (kept for compat)
 
         self._capture_session: Optional[capture.CaptureSession] = None
+        # Server-assigned scan session id (set after a successful upload).
+        # Used to attach the next capture artifact to the same scan.
+        self._server_session_id: Optional[str] = None
 
         self._configure_root()
         self._build_styles()
@@ -677,6 +681,7 @@ class VoipScanApp:
                 f"[capture] Capture stopped — saved file(s): {files} "
                 f"in {result.output_files[0].parent}"
             )
+            self._upload_capture(result)
         else:
             self._enqueue(
                 "[capture] Capture stopped — no output file was produced. "
@@ -707,6 +712,7 @@ class VoipScanApp:
                 log_path = self._save_raw_log(report)
                 self._last_log_path = log_path
                 self._enqueue(f"[scan] Log saved -> {log_path}")
+                self._upload_scan(report, log_path)
                 self._enqueue("[scan] Switching to plain-English summary view.")
                 self.root.after(0, lambda: self._render_summary(report))
             except Exception as e:
@@ -942,6 +948,56 @@ class VoipScanApp:
         text = self.txt_results.get("1.0", "end").rstrip()
         self.txt_results.configure(state="disabled")
         return text
+
+    # -- VPS upload -------------------------------------------------------
+    def _upload_scan(self, report: ScanReport, log_path: Optional[Path]) -> None:
+        """Best-effort: send the structured scan + log to the dashboard.
+
+        Failures never break the local scan; the user still has the JSON
+        and the raw log on disk regardless of network state.
+        """
+        try:
+            url = upload_mod.get_vps_url()
+            self._enqueue(f"[upload] Sending scan report to {url} ...")
+            result = upload_mod.upload_scan_session(report, log_path)
+        except Exception as e:
+            log_exception("upload_scan_session crashed")
+            self._enqueue(f"[upload] failed: {e}")
+            return
+        if result.get("ok"):
+            sid = result.get("session_id") or ""
+            self._server_session_id = sid or None
+            self._enqueue(
+                f"[upload] Scan uploaded successfully (server session "
+                f"{sid or '?'})."
+            )
+        else:
+            msg = result.get("message") or result.get("server") or "upload failed"
+            self._enqueue(f"[upload] Scan upload skipped/failed: {msg}")
+
+    def _upload_capture(self, result: "capture.CaptureResult") -> None:
+        try:
+            url = upload_mod.get_vps_url()
+            for f in result.output_files:
+                self._enqueue(
+                    f"[upload] Sending capture {f.name} to {url} ..."
+                )
+                resp = upload_mod.upload_capture_artifact(
+                    f,
+                    session_id=self._server_session_id,
+                    engine=result.engine,
+                    notes="; ".join(result.notes)[:500],
+                )
+                if resp.get("ok"):
+                    self._enqueue(f"[upload] Capture {f.name} uploaded.")
+                else:
+                    self._enqueue(
+                        f"[upload] Capture {f.name} not uploaded: "
+                        f"{resp.get('message') or resp.get('server')}"
+                    )
+        except Exception as e:
+            log_exception("capture upload crashed")
+            self._enqueue(f"[upload] capture upload failed: {e}")
 
     def _on_clear(self) -> None:
         self.txt_results.configure(state="normal")

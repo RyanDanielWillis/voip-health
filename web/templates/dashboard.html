@@ -1,70 +1,166 @@
 {% extends "base.html" %}
 {% set active_page = "dashboard" %}
-{% block title %}Audit Dashboard | VoIP Health Check{% endblock %}
+{% block title %}VoIP Health Dashboard{% endblock %}
 
 {% block content %}
 <div class="container">
-    <h1>Audit dashboard</h1>
-    <p class="muted">Structured results from agent uploads. Filter, sort, and export-ready.</p>
+    <h1>VoIP Health Dashboard</h1>
+    <p class="muted">Real-time view of every scan uploaded by the desktop client.
+       Each row links to the full scan detail with downloadable raw data.</p>
 
-    {% if data and data|length > 0 %}
+    <!-- KPI strip -->
+    <div class="kpi-strip" aria-label="Aggregate KPIs">
+        <div class="kpi">
+            <div class="kpi-num">{{ kpis.scans }}</div>
+            <div class="kpi-label">Total scans</div>
+        </div>
+        <div class="kpi kpi-danger">
+            <div class="kpi-num">{{ kpis.critical }}</div>
+            <div class="kpi-label">Critical issues</div>
+        </div>
+        <div class="kpi kpi-warn">
+            <div class="kpi-num">{{ kpis.warnings }}</div>
+            <div class="kpi-label">Warnings</div>
+        </div>
+        <div class="kpi">
+            <div class="kpi-num">{{ kpis.ports_blocked }}</div>
+            <div class="kpi-label">Blocked / filtered ports</div>
+        </div>
+        <div class="kpi">
+            <div class="kpi-num">{{ "%.1f"|format(kpis.avg_duration) }}s</div>
+            <div class="kpi-label">Avg. scan duration</div>
+        </div>
+    </div>
+
+    <!-- Latency trend chart -->
+    {% if trend and trend|length > 1 %}
+    <section class="chart-card" aria-label="Latency / jitter / packet loss trend">
+        <h2>Latency, jitter &amp; packet loss (last {{ trend|length }} scans)</h2>
+        <canvas id="latencyChart" height="120"></canvas>
+    </section>
+    {% endif %}
+
+    <h2 style="margin-top: 24px;">Recent scans</h2>
+    {% if sessions and sessions|length > 0 %}
     <div class="table-wrap">
-        <table class="data-table" id="audits-table">
+        <table class="data-table">
             <thead>
                 <tr>
-                    <th>ID</th>
-                    <th>Host / IP</th>
-                    <th>Port</th>
-                    <th>Transport</th>
-                    <th>Protocol</th>
-                    <th>Service</th>
-                    <th>Status</th>
-                    <th>Latency (ms)</th>
-                    <th>Severity</th>
-                    <th>Banner</th>
-                    <th>Notes</th>
+                    <th>#</th>
+                    <th>Host</th>
+                    <th>When</th>
+                    <th>Issues</th>
+                    <th>SIP ALG</th>
+                    <th>VLAN</th>
+                    <th>Latency</th>
+                    <th>Likely cause</th>
+                    <th>Ports</th>
+                    <th>Raw data</th>
                 </tr>
             </thead>
             <tbody>
-                {% for row in data %}
-                {% set f = row.fields %}
+                {% for s in sessions %}
                 <tr>
-                    <td>#{{ row.id }}</td>
-                    <td>{{ f.host or '—' }}</td>
-                    <td>{{ f.port or '—' }}</td>
-                    <td>{{ f.transport or '—' }}</td>
-                    <td>{{ f.protocol or '—' }}</td>
-                    <td>{{ f.service or '—' }}</td>
+                    <td><a href="{{ url_for('scan_detail', sid=s.id) }}">#{{ s.id }}</a></td>
+                    <td>{{ s.hostname or '—' }}<br>
+                        <span class="muted" style="font-size:.8rem;">
+                          {{ s.public_ip or '' }}</span></td>
+                    <td>{{ s.uploaded_at }}</td>
                     <td>
-                        {% if f.status %}
-                        <span class="badge {% if f.status in ['up','open','pass','success'] %}success{% elif f.status in ['down','closed','fail','error'] %}danger{% else %}info{% endif %}">{{ f.status }}</span>
+                        {% if s.issue_critical %}
+                            <span class="badge danger">{{ s.issue_critical }} crit</span>
+                        {% endif %}
+                        {% if s.issue_warning %}
+                            <span class="badge warn">{{ s.issue_warning }} warn</span>
+                        {% endif %}
+                        {% if not s.issue_critical and not s.issue_warning %}
+                            <span class="badge success">clean</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if s.sip_alg_overall == 'likely_on' %}
+                            <span class="badge danger">likely_on</span>
+                        {% elif s.sip_alg_overall == 'likely_off' %}
+                            <span class="badge success">off</span>
+                        {% else %}
+                            <span class="badge muted">{{ s.sip_alg_overall or '—' }}</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ s.vlan_status or '—' }}</td>
+                    <td>
+                        {% if s.latency_status == 'bad' %}
+                            <span class="badge danger">bad</span>
+                        {% elif s.latency_status == 'warn' %}
+                            <span class="badge warn">warn</span>
+                        {% elif s.latency_status %}
+                            <span class="badge success">{{ s.latency_status }}</span>
                         {% else %}—{% endif %}
                     </td>
-                    <td>{{ f.latency_ms if f.latency_ms is not none else '—' }}</td>
+                    <td>{{ s.likely_blocking or '—' }}</td>
                     <td>
-                        {% if f.severity %}
-                            <span class="severity-{{ f.severity|lower }}">{{ f.severity }}</span>
-                        {% else %}—{% endif %}
+                        <span class="muted">{{ s.port_open }}/{{ s.port_total }}</span>
+                        {% if s.port_blocked %}
+                            <span class="badge danger">{{ s.port_blocked }} blocked</span>
+                        {% endif %}
                     </td>
-                    <td>{% if f.banner %}<code class="inline">{{ f.banner }}</code>{% else %}—{% endif %}</td>
-                    <td>{{ f.notes or '—' }}</td>
-                </tr>
-                {% if f.raw %}
-                <tr>
-                    <td colspan="11">
-                        <details>
-                            <summary class="muted">Raw payload for #{{ row.id }}</summary>
-                            <pre class="code-block">{{ f.raw }}</pre>
-                        </details>
+                    <td>
+                        <a href="{{ url_for('api_v2_scan_report_json', sid=s.id) }}">JSON</a>
+                        {% if s.artifact_count %}
+                            · <a href="{{ url_for('scan_detail', sid=s.id) }}#artifacts">
+                              {{ s.artifact_count }} file{{ '' if s.artifact_count == 1 else 's' }}</a>
+                        {% endif %}
                     </td>
                 </tr>
-                {% endif %}
                 {% endfor %}
             </tbody>
         </table>
     </div>
     {% else %}
-    <div class="empty">No audits yet. Once a scan is uploaded via <code class="inline">/api/upload-audit</code>, results will appear here.</div>
+    <div class="empty">No scans uploaded yet. Run a scan from the desktop client —
+        it auto-uploads to <code class="inline">/api/v2/scan/upload</code>.</div>
     {% endif %}
 </div>
+
+{% if trend and trend|length > 1 %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"
+        crossorigin="anonymous" defer></script>
+<script>
+window.addEventListener('load', function () {
+    if (typeof Chart === 'undefined') return;
+    var trend = {{ trend|tojson }};
+    var labels = trend.map(function (t) { return '#' + t.sid; });
+    var rtt = trend.map(function (t) { return t.avg_rtt; });
+    var jitter = trend.map(function (t) { return t.avg_jitter; });
+    var loss = trend.map(function (t) { return t.avg_loss; });
+    var ctx = document.getElementById('latencyChart');
+    if (!ctx) return;
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [
+                {label: 'avg RTT (ms)', data: rtt, borderColor: '#5aa9ff',
+                 backgroundColor: 'rgba(90,169,255,0.15)', tension: 0.25, yAxisID: 'y'},
+                {label: 'avg jitter (ms)', data: jitter, borderColor: '#f5a623',
+                 backgroundColor: 'rgba(245,166,35,0.15)', tension: 0.25, yAxisID: 'y'},
+                {label: 'packet loss (%)', data: loss, borderColor: '#e74c3c',
+                 backgroundColor: 'rgba(231,76,60,0.15)', tension: 0.25, yAxisID: 'y2'}
+            ]
+        },
+        options: {
+            responsive: true,
+            interaction: {mode: 'index', intersect: false},
+            scales: {
+                y: {position: 'left', beginAtZero: true,
+                    title: {display: true, text: 'milliseconds'}},
+                y2: {position: 'right', beginAtZero: true,
+                     grid: {drawOnChartArea: false},
+                     title: {display: true, text: '% loss'}}
+            },
+            plugins: {legend: {position: 'bottom'}}
+        }
+    });
+});
+</script>
+{% endif %}
 {% endblock %}
