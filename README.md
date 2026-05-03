@@ -22,8 +22,11 @@ Scans your PBX/phone system for one-way audio, choppy calls, exposed extensions,
 | **Registration fails** | Wrong auth or NAT | Check phone configuration or firmware version |
 
 ## Usage
-Download the portable desktop client from https://voipscan.danielscience.com
-and see results at https://voipscan.danielscience.com/dashboard
+Download the portable Windows client from the
+[**GitHub Releases page**](https://github.com/RyanDanielWillis/voip-health/releases/latest)
+(permanent location, latest release) — also linked from the
+[hosted homepage](https://voipscan.danielscience.com). See results at
+https://voipscan.danielscience.com/dashboard.
 
 ## Desktop client (Windows)
 
