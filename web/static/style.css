@@ -99,12 +99,12 @@ a:hover { color: var(--link-hover); text-decoration: underline; }
     line-height: 1;
 }
 .brand:hover { text-decoration: none; color: var(--text); }
-.brand img {
-    height: 28px;
-    width: 28px;
-    object-fit: contain;
+.brand-icon {
+    width: 22px;
+    height: 22px;
+    flex: 0 0 22px;
     display: block;
-    background: transparent;
+    color: var(--accent);
 }
 .brand-name { white-space: nowrap; }
 
@@ -198,10 +198,9 @@ h3 { font-size: 1.1rem; }
     flex-wrap: wrap;
 }
 .page-title-logo {
-    height: 56px;
+    height: 88px;
     width: auto;
     object-fit: contain;
-    background: transparent;
     flex: 0 0 auto;
     display: block;
 }
@@ -361,7 +360,7 @@ label { display: block; font-size: 0.9rem; color: var(--text-muted); margin-bott
         height: 52px;
     }
     .brand-name { font-size: 0.95rem; }
-    .brand img { height: 24px; width: 24px; }
+    .brand-icon { width: 20px; height: 20px; flex: 0 0 20px; }
     .nav-links { gap: 2px; }
     .nav-links a { padding: 5px 8px; font-size: 0.88rem; }
     .icon-link-label { display: none; }
@@ -370,7 +369,7 @@ label { display: block; font-size: 0.9rem; color: var(--text-muted); margin-bott
     .container { margin: 16px 12px; padding: 18px; }
     h1 { font-size: 1.5rem; }
     .page-title { gap: 10px; }
-    .page-title-logo { height: 44px; }
+    .page-title-logo { height: 64px; }
 }
 
 @media (max-width: 420px) {
