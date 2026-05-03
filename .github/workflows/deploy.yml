@@ -13,6 +13,24 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Validate required secrets
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_APP_DIR: ${{ secrets.VPS_APP_DIR }}
+        run: |
+          set -euo pipefail
+          missing=()
+          [ -n "${SSH_PRIVATE_KEY:-}" ] || missing+=("SSH_PRIVATE_KEY")
+          [ -n "${VPS_HOST:-}" ]        || missing+=("VPS_HOST")
+          [ -n "${VPS_USER:-}" ]        || missing+=("VPS_USER")
+          [ -n "${VPS_APP_DIR:-}" ]     || missing+=("VPS_APP_DIR")
+          if [ ${#missing[@]} -ne 0 ]; then
+            echo "Missing required secrets: ${missing[*]}" >&2
+            exit 1
+          fi
+
       - name: Set up SSH agent
         uses: webfactory/ssh-agent@v0.9.0
         with:
@@ -20,17 +38,43 @@ jobs:
 
       - name: Add VPS to known_hosts
         run: |
+          set -euo pipefail
           mkdir -p ~/.ssh
-          ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
+          ssh-keyscan -H "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts
 
       - name: Deploy to VPS
+        env:
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_APP_DIR: ${{ secrets.VPS_APP_DIR }}
         run: |
-          ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} << 'EOF'
-            set -e
-            cd /home/youruser/voipscan_api
+          set -euo pipefail
+          ssh "$VPS_USER@$VPS_HOST" "VPS_APP_DIR='$VPS_APP_DIR' bash -s" <<'EOF'
+            set -euo pipefail
+            cd "$VPS_APP_DIR"
             git pull origin main
-            source venv/bin/activate
-            pip install -r requirements.txt
-            pkill -f 'gunicorn.*app:app' || true
-            nohup gunicorn --bind 0.0.0.0:5000 app:app > gunicorn.log 2>&1 &
+
+            # Pick a Python interpreter, preferring the project's venv if present.
+            if [ -x ".venv/bin/python" ]; then
+              PY=".venv/bin/python"
+            elif [ -x "venv/bin/python" ]; then
+              PY="venv/bin/python"
+            else
+              PY="python3"
+            fi
+
+            # update.py handles deps install, gunicorn restart (web.app:app), and nginx reload.
+            if [ -f update.py ]; then
+              "$PY" update.py
+            else
+              # Fallback: minimal manual deploy if update.py is absent.
+              if [ -d .venv ]; then
+                source .venv/bin/activate
+              else
+                source venv/bin/activate
+              fi
+              pip install -r requirements.txt
+              pkill -f 'gunicorn.*web.app:app' || true
+              nohup gunicorn --bind 0.0.0.0:5000 web.app:app > gunicorn.log 2>&1 &
+            fi
           EOF
