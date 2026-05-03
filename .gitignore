@@ -9,4 +9,5 @@ LocalScanner/build/
 LocalScanner/dist/
 LocalScanner/logs/
 LocalScanner/reports/
+LocalScanner/captures/
 LocalScanner/.venv/

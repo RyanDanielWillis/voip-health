@@ -896,29 +896,54 @@ class VoipScanApp:
         if session is not None and session.is_running:
             self._enqueue("[capture] A capture is already running — Stop it first.")
             return
-        try:
-            session = capture.CaptureSession(on_log=self._enqueue)
-            status = session.start()
-        except capture.CaptureUnavailable as e:
-            self._enqueue(f"[capture] {e}")
-            messagebox.showinfo(__app_name__, str(e))
-            return
-        except Exception as e:
-            log_exception("Packet capture failed to start")
-            self._enqueue(f"[capture] Failed to start: {e}")
-            messagebox.showerror(
-                __app_name__,
-                f"Packet capture could not start: {e}\n\n"
-                "Full PCAP capture needs Wireshark + Npcap and Administrator "
-                "rights. The non-admin connection-evidence fallback should "
-                "still work — try again, or restart the app as Administrator "
-                "for true PCAP.",
-            )
-            return
-        self._capture_session = session
-        self._enqueue(f"[capture] Engine: {status.engine}. {status.detail}")
-        self._set_capture_buttons(running=True)
-        self.lbl_status.configure(text=f"Capturing packets ({status.engine})...")
+
+        # Disable the start button immediately so a slow start (evidence
+        # mode runs ipconfig/netstat/ping/Test-NetConnection synchronously
+        # which can take many seconds) doesn't let the user click again.
+        self.btn_capture.configure(state="disabled")
+        self.btn_capture_stop.configure(state="disabled")
+        self.lbl_status.configure(text="Starting packet capture...")
+        self._enqueue("[capture] Starting capture (this may take a few seconds)...")
+
+        def worker() -> None:
+            err: Optional[Exception] = None
+            status: Optional[capture.CaptureStatus] = None
+            session_local: Optional[capture.CaptureSession] = None
+            try:
+                session_local = capture.CaptureSession(on_log=self._enqueue)
+                status = session_local.start()
+            except Exception as e:
+                err = e
+                log_exception("Packet capture failed to start")
+
+            def finish() -> None:
+                if err is not None or status is None or session_local is None:
+                    self._enqueue(f"[capture] Failed to start: {err}")
+                    self._set_capture_buttons(running=False)
+                    self.lbl_status.configure(text="Idle.")
+                    messagebox.showerror(
+                        __app_name__,
+                        f"Packet capture could not start: {err}\n\n"
+                        "The non-admin connection-evidence fallback should "
+                        "still work — try again, or restart the app as "
+                        "Administrator with Wireshark + Npcap installed "
+                        "for full PCAP.",
+                    )
+                    return
+                self._capture_session = session_local
+                self._enqueue(
+                    f"[capture] Engine: {status.engine}. {status.detail}"
+                )
+                self._set_capture_buttons(running=True)
+                self.lbl_status.configure(
+                    text=f"Capturing packets ({status.engine})..."
+                )
+
+            self.root.after(0, finish)
+
+        threading.Thread(
+            target=worker, name="voipscan-capture-start", daemon=True
+        ).start()
 
     def _stop_packet_capture(self) -> None:
         session = self._capture_session
@@ -926,44 +951,59 @@ class VoipScanApp:
             self._enqueue("[capture] No capture is currently running.")
             self._set_capture_buttons(running=False)
             return
-        try:
-            result = session.stop()
-        except Exception as e:
-            log_exception("Packet capture stop failed")
-            self._enqueue(f"[capture] Stop error: {e}")
-            result = None
-        self._set_capture_buttons(running=False)
-        self.lbl_status.configure(text="Idle.")
-        self._capture_session = None
-        if result is not None:
-            for note in result.notes:
-                self._enqueue(f"[capture] {note}")
-            if result.output_files:
-                files = ", ".join(p.name for p in result.output_files)
-                self._enqueue(
-                    f"[capture] Capture stopped — saved file(s): {files} "
-                    f"in {result.output_files[0].parent}"
-                )
-                self._upload_capture(result)
-            else:
-                self._enqueue(
-                    "[capture] Capture stopped — no PCAP file was produced. "
-                    "If you need full packet capture, run as Administrator "
-                    "with Npcap/Wireshark installed; otherwise the "
-                    "non-admin evidence file (saved separately) is the "
-                    "best the OS can give us."
-                )
 
-        # Always ship the rolling log on capture stop. This is the user's
-        # explicit ask: even if the capture produced nothing, the log
-        # alone is enough to confirm what happened on the VPS dashboard.
-        try:
-            self._upload_log_only(
-                "packet capture",
-                logger.get_session_log_path(),
-            )
-        except Exception:
-            log_exception("post-capture log upload failed")
+        # Disable both buttons during the stop sequence — evidence mode's
+        # FINAL snapshot can take many seconds, and dumpcap stop has to
+        # wait for the child process to flush the .pcapng.
+        self.btn_capture.configure(state="disabled")
+        self.btn_capture_stop.configure(state="disabled")
+        self.lbl_status.configure(text="Stopping packet capture...")
+        self._enqueue("[capture] Stopping capture and finalizing artifacts...")
+        self._capture_session = None
+
+        def worker() -> None:
+            result: Optional[capture.CaptureResult] = None
+            try:
+                result = session.stop()
+            except Exception as e:
+                log_exception("Packet capture stop failed")
+                self._enqueue(f"[capture] Stop error: {e}")
+
+            def finish() -> None:
+                self._set_capture_buttons(running=False)
+                self.lbl_status.configure(text="Idle.")
+                if result is not None:
+                    for note in result.notes:
+                        self._enqueue(f"[capture] {note}")
+                    if result.output_files:
+                        files = ", ".join(p.name for p in result.output_files)
+                        self._enqueue(
+                            f"[capture] Capture stopped — saved file(s): "
+                            f"{files} in {result.output_files[0].parent}"
+                        )
+                        self._upload_capture(result)
+                    else:
+                        self._enqueue(
+                            "[capture] Capture stopped — no artifact was "
+                            "produced. For true PCAP, run as Administrator "
+                            "with Wireshark + Npcap installed."
+                        )
+                # Always ship the rolling log on capture stop, even if
+                # the capture produced nothing. The log on the VPS
+                # dashboard is what tells support what happened.
+                try:
+                    self._upload_log_only(
+                        "packet capture",
+                        logger.get_session_log_path(),
+                    )
+                except Exception:
+                    log_exception("post-capture log upload failed")
+
+            self.root.after(0, finish)
+
+        threading.Thread(
+            target=worker, name="voipscan-capture-stop", daemon=True
+        ).start()
 
     def _run_evidence(self, form: FormInputs, profile: str = "quick") -> None:
         if self._scan_thread and self._scan_thread.is_alive():

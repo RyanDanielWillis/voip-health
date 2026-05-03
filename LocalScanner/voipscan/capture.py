@@ -246,51 +246,76 @@ class CaptureSession:
         """Start the best capture engine that this host can run.
 
         Order:
-          1. dumpcap (Wireshark) when present + Administrator.
-          2. pktmon when present + Administrator.
-          3. Connection-evidence fallback (no admin, always works).
+          1. dumpcap (Wireshark) — try regardless of admin status. Some
+             Npcap installs are configured to allow non-admin capture,
+             so we let dumpcap tell us if it can't attach rather than
+             pre-emptively skipping it. If it dies in the first ~2s
+             we treat that as a start failure and fall back.
+          2. pktmon — only attempted when running as Administrator,
+             since pktmon always requires admin.
+          3. Connection-evidence fallback — always works, no admin
+             required. This is what the operator gets when full PCAP
+             cannot run for any reason.
 
-        The fallback is the operator's explicit ask: full PCAP capture
-        on Windows requires Administrator + Npcap, which most field
-        operators won't have. The evidence fallback is non-PCAP but
-        captures the most useful network state we can read without
-        admin rights.
+        We never raise from this method on the fallback path: the
+        evidence file is always created so the operator always has
+        something to upload.
         """
-        status = detect_capture_engine()
         captures = paths.captures_dir()
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-
         admin = is_admin()
-        if status.available and admin:
+        status = detect_capture_engine()
+
+        # Surface what we found up-front so the GUI log explains the
+        # decision tree before any subprocess is touched.
+        self._on_log(f"[capture] Engine probe: {status.detail}")
+        self._on_log(
+            f"[capture] Administrator: {'yes' if admin else 'no'}"
+        )
+
+        # Try dumpcap first (works without admin if Npcap allows it).
+        if status.available and status.engine == "dumpcap":
             try:
-                if status.engine == "dumpcap":
-                    self._start_dumpcap(status, captures, ts)
-                elif status.engine == "pktmon":
-                    self._start_pktmon(status, captures, ts)
-                else:
-                    raise CaptureUnavailable(status.detail)
-                self._engine = status.engine
+                self._start_dumpcap(status, captures, ts)
+                self._engine = "dumpcap"
                 self._tool_path = status.tool_path
                 self._started_at = datetime.now()
                 return status
             except CaptureUnavailable as e:
                 self._on_log(
-                    f"[capture] {status.engine} could not start ({e}). "
+                    f"[capture] dumpcap could not start: {e} "
                     "Falling back to non-admin connection evidence."
                 )
 
-        # Non-admin / no-engine path: evidence capture.
-        if not admin:
+        # pktmon needs admin; only try if we have it.
+        if status.available and status.engine == "pktmon":
+            if admin:
+                try:
+                    self._start_pktmon(status, captures, ts)
+                    self._engine = "pktmon"
+                    self._tool_path = status.tool_path
+                    self._started_at = datetime.now()
+                    return status
+                except CaptureUnavailable as e:
+                    self._on_log(
+                        f"[capture] pktmon could not start: {e} "
+                        "Falling back to non-admin connection evidence."
+                    )
+            else:
+                self._on_log(
+                    "[capture] pktmon requires Administrator. Restart "
+                    "the app as Administrator to enable pktmon. "
+                    "Collecting non-admin connection evidence instead."
+                )
+
+        # Fallback evidence capture — always available.
+        if not status.available:
             self._on_log(
-                "[capture] Full packet capture needs Administrator + a "
-                "preinstalled capture driver (Npcap / pktmon). This "
-                "process is NOT running as Administrator, so we'll "
-                "collect a non-admin connection-evidence file instead."
-            )
-        elif not status.available:
-            self._on_log(
-                f"[capture] No PCAP engine detected ({status.detail}). "
-                "Collecting a connection-evidence file instead."
+                "[capture] No PCAP capture tool detected. To enable "
+                "true packet capture, install Wireshark "
+                "(https://www.wireshark.org/) which bundles dumpcap "
+                "and offers Npcap during install. Collecting a "
+                "non-admin connection-evidence file instead."
             )
         return self._start_evidence(captures, ts)
 
@@ -346,14 +371,22 @@ class CaptureSession:
         self._proc = proc
         self.output_files = [out_path]
 
-        # Stream dumpcap stderr/stdout into the GUI/logs so the user sees
-        # if it actually started capturing or hit a permission error.
+        # Buffer the first ~2s of dumpcap output so we can detect a fast
+        # failure (no Npcap, no usable interface, access denied, etc.)
+        # and translate it into a CaptureUnavailable that triggers the
+        # evidence fallback. After the probe window, output streams
+        # straight to the GUI log.
+        startup_lines: list[str] = []
+        startup_done = threading.Event()
+
         def reader() -> None:
             assert proc.stdout is not None
             for line in proc.stdout:
                 line = line.rstrip("\n")
                 if not line:
                     continue
+                if not startup_done.is_set():
+                    startup_lines.append(line)
                 self._on_log(f"[capture] {line}")
             rc = proc.wait()
             self._on_log(f"[capture] dumpcap exited rc={rc}")
@@ -362,6 +395,53 @@ class CaptureSession:
             target=reader, name="voipscan-capture-reader", daemon=True
         )
         self._reader_thread.start()
+
+        # Probe window: if dumpcap exits within 2 seconds it almost
+        # certainly failed to attach. Surface that as a clear error.
+        try:
+            rc = proc.wait(timeout=2.0)
+        except subprocess.TimeoutExpired:
+            rc = None
+        startup_done.set()
+        if rc is not None and rc != 0:
+            joined = " | ".join(startup_lines).strip() or "no output"
+            self._proc = None
+            self.output_files = []
+            try:
+                if out_path.exists() and out_path.stat().st_size == 0:
+                    out_path.unlink()
+            except OSError:
+                pass
+            hint = self._dumpcap_failure_hint(joined)
+            raise CaptureUnavailable(
+                f"dumpcap exited rc={rc} during startup ({joined}). {hint}"
+            )
+
+    @staticmethod
+    def _dumpcap_failure_hint(output: str) -> str:
+        """Translate raw dumpcap stderr into an operator-friendly hint."""
+        low = output.lower()
+        if "npf" in low or "npcap" in low or "winpcap" in low:
+            return (
+                "Npcap does not appear to be installed or its driver "
+                "is not running. Install Npcap from https://npcap.com/ "
+                "(tick 'WinPcap API-compatible mode' during install)."
+            )
+        if "permission" in low or "access" in low or "denied" in low:
+            return (
+                "Permission denied. Either re-run the app as "
+                "Administrator, or reinstall Npcap with the "
+                "'Support raw 802.11 traffic' / non-admin option."
+            )
+        if "no such" in low or "not found" in low or "no interface" in low:
+            return (
+                "dumpcap could not find a usable interface. Confirm a "
+                "network adapter is connected and Npcap is installed."
+            )
+        return (
+            "Verify Wireshark + Npcap are installed and try running "
+            "the app as Administrator."
+        )
 
     def _stop_dumpcap(self) -> CaptureResult:
         proc = self._proc
