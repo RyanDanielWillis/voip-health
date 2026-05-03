@@ -612,3 +612,56 @@ label {
         font-size: 0.82rem;
     }
 }
+
+/* Final nav Download button override */
+.site-header .nav-links .download-button,
+.site-header .nav-links .cta-button.download-button,
+.site-header .nav-links a.download-button,
+.site-header .nav-links a.cta-button.download-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: auto;
+    height: 30px;
+    padding: 5px 10px;
+    margin: 0;
+    border-radius: 6px;
+    background: var(--surface-2);
+    color: var(--text) !important;
+    border: 1px solid var(--border);
+    box-shadow: none;
+    font-size: 0.85rem;
+    font-weight: 500;
+    line-height: 1.2;
+    letter-spacing: 0;
+    white-space: nowrap;
+}
+
+.site-header .nav-links .download-button:hover,
+.site-header .nav-links .cta-button.download-button:hover,
+.site-header .nav-links a.download-button:hover,
+.site-header .nav-links a.cta-button.download-button:hover {
+    background: var(--bg);
+    color: var(--text) !important;
+    border-color: var(--text-muted);
+    text-decoration: none;
+}
+
+.site-header .nav-links {
+    gap: 6px;
+}
+
+@media (max-width: 720px) {
+    .site-header .nav-links .download-button,
+    .site-header .nav-links .cta-button.download-button,
+    .site-header .nav-links a.download-button,
+    .site-header .nav-links a.cta-button.download-button {
+        height: 29px;
+        padding: 5px 8px;
+        font-size: 0.82rem;
+    }
+
+    .site-header .nav-links {
+        gap: 5px;
+    }
+}
