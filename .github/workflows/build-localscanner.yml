@@ -41,6 +41,60 @@ jobs:
           $pkg = "package\VoIPHealthCheck"
           New-Item -ItemType Directory -Force -Path $pkg | Out-Null
           Copy-Item "dist\VoIPHealthCheck.exe" -Destination $pkg
+
+          # Read version + build tag straight from the package source so
+          # the staged artifact is self-identifying (operator can confirm
+          # exactly what they extracted without launching the GUI).
+          $initText = Get-Content "voipscan\__init__.py" -Raw
+          $version = ([regex]::Match($initText, '__version__\s*=\s*"([^"]+)"')).Groups[1].Value
+          if (-not $version) { $version = "unknown" }
+          $buildTag = ([regex]::Match($initText, '__build_tag__\s*=\s*"([^"]+)"')).Groups[1].Value
+          if (-not $buildTag) { $buildTag = "unknown" }
+          Write-Host "Detected version=$version build_tag=$buildTag"
+
+          # Versioned copy of the exe alongside the canonical name. Both
+          # are kept so existing shortcuts pointing at VoIPHealthCheck.exe
+          # keep working, while the versioned name makes it obvious at a
+          # glance which build is in the folder.
+          Copy-Item "dist\VoIPHealthCheck.exe" -Destination (Join-Path $pkg "VoIPHealthCheck-$version.exe")
+
+          $buildTimestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+          $sha = $env:GITHUB_SHA
+          if (-not $sha) { $sha = "local" }
+          $shortSha = if ($sha.Length -ge 7) { $sha.Substring(0,7) } else { $sha }
+          $runId = $env:GITHUB_RUN_ID
+          if (-not $runId) { $runId = "local" }
+          $runNumber = $env:GITHUB_RUN_NUMBER
+          if (-not $runNumber) { $runNumber = "local" }
+          $refName = $env:GITHUB_REF_NAME
+          if (-not $refName) { $refName = "local" }
+          $repo = $env:GITHUB_REPOSITORY
+          if (-not $repo) { $repo = "local" }
+
+          # Build BUILD_INFO.txt line-by-line. A PowerShell here-string
+          # would force its body to flush-left, which collides with YAML
+          # block-scalar indentation parsing.
+          $buildInfoLines = @(
+            "VoIP Health Check LocalScanner",
+            "version:        $version",
+            "build_tag:      $buildTag",
+            "git_sha:        $sha",
+            "git_short_sha:  $shortSha",
+            "git_ref:        $refName",
+            "repo:           $repo",
+            "workflow_run:   $runId",
+            "workflow_run_number: $runNumber",
+            "build_utc:      $buildTimestamp",
+            "exe_canonical:  VoIPHealthCheck.exe",
+            "exe_versioned:  VoIPHealthCheck-$version.exe"
+          )
+          Set-Content -Path (Join-Path $pkg "BUILD_INFO.txt") -Value $buildInfoLines -Encoding UTF8
+          # VERSION.txt — tiny single-line file for quick eyeballing /
+          # for tooling that just wants the version string.
+          Set-Content -Path (Join-Path $pkg "VERSION.txt") -Value "$version" -Encoding UTF8
+          Write-Host "Staged BUILD_INFO.txt:"
+          Get-Content (Join-Path $pkg "BUILD_INFO.txt")
+
           if (Test-Path "nmap") {
             Copy-Item "nmap" -Destination $pkg -Recurse
             Write-Host "Bundled nmap/ folder into package."

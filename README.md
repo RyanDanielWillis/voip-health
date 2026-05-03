@@ -61,29 +61,54 @@ get the latest build:
    [`VoIPHealthCheck-windows-exe`](https://github.com/RyanDanielWillis/voip-health/actions/workflows/build-localscanner.yml)
    (single `.exe`) or `VoIPHealthCheck-windows-package` (the `.exe`
    alongside the bundled `nmap/` folder, recommended for full scanning).
-4. Unzip and run `VoIPHealthCheck.exe` — no installer required.
+4. Unzip into a fresh folder (e.g. `C:\Tools\VoIPHealthCheck-2.2.0\`)
+   and run `VoIPHealthCheck-2.2.0.exe` — no installer required. (The
+   unversioned `VoIPHealthCheck.exe` next to it is byte-identical and
+   exists so existing shortcuts keep working; the versioned name makes
+   the build obvious at a glance.)
 
 The hosted homepage at https://voipscan.danielscience.com also surfaces
 the same screenshot, copy and download instructions for end users.
 
-### Troubleshooting: scan appears to hang
+### Troubleshooting: scan appears to hang / shows wrong version
 
 The 2.2.0 build replaced the legacy broad nmap sweep with the **Safe
 Quick Scan profile**. On startup the client now logs:
 
 ```
 VoIP Health Check LocalScanner version 2.2.0 starting (build: Safe Quick Scan profile)
+Executable: <full path to running exe> (frozen=True)
+Working directory: <full path>
+App root: <full path>
+Build info: <path>\BUILD_INFO.txt
 [safe] Safe Quick Scan profile active ...
 ```
 
-If your log instead contains a line like
-`Running Quick Scan: ... 192.168.1.0/24 192.168.41.0/24 ...` you are
-running an **older executable or older `LocalScanner/` folder**.
-Download the latest `VoIPHealthCheck-windows-package` artifact from
-the *Build LocalScanner Windows EXE* GitHub Actions workflow and
-replace your `VoIPHealthCheck.exe`, or `git pull` and re-run from
-source. See [LocalScanner/README.md](LocalScanner/README.md#troubleshooting-scan-never-completes--quick-scan-hangs)
-for details.
+The CI distribution package is now self-identifying — alongside
+`VoIPHealthCheck.exe` you will find a versioned `VoIPHealthCheck-2.2.0.exe`,
+a `BUILD_INFO.txt` (version, build tag, git SHA, workflow run id, UTC
+build timestamp) and a `VERSION.txt`. **Prefer launching the versioned
+exe** so the file name itself confirms the build.
+
+If your log shows version `2.0.0`, an old `Running Quick Scan: ...
+192.168.1.0/24 192.168.41.0/24 ...` line, or no `Executable:` /
+`Working directory:` lines at all, you are running an **old
+executable** — most often a stale shortcut to a `VoipScanner_Desktop`
+folder from a previous install. To recover:
+
+1. Delete the old `VoipScanner_Desktop` folder and any desktop / Start
+   Menu shortcuts that point at it.
+2. Download the latest `VoIPHealthCheck-windows-package` artifact from
+   the *Build LocalScanner Windows EXE* GitHub Actions workflow.
+3. **Extract the zip to a fresh folder** (e.g.
+   `C:\Tools\VoIPHealthCheck-2.2.0\`). Do not extract on top of an
+   older folder.
+4. Launch `VoIPHealthCheck-2.2.0.exe` and confirm the startup banner
+   reads `version 2.2.0` and the `Executable:` line points at the new
+   folder.
+
+See [LocalScanner/README.md](LocalScanner/README.md#troubleshooting-scan-never-completes--quick-scan-hangs)
+for the full procedure.
 
 ## Output:
 🔍 SCANNING 192.168.1.100...

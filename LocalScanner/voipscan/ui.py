@@ -16,7 +16,9 @@ the small ``ICONS`` / ``STATUS_COLORS`` tables below.
 from __future__ import annotations
 
 import json
+import os
 import queue
+import sys
 import threading
 import tkinter as tk
 from datetime import datetime
@@ -132,6 +134,39 @@ class VoipScanApp:
             f"VoIP Health Check LocalScanner version {__version__} starting "
             f"(build: {__build_tag__})."
         )
+        # Diagnostic lines so an operator (or a support engineer reading
+        # the log) can tell exactly which binary was launched. If a stale
+        # shortcut is pointing at an old VoipScanner_Desktop folder the
+        # exe path here will not match the freshly extracted location.
+        try:
+            exe_path = Path(sys.executable).resolve()
+        except Exception:
+            exe_path = Path(sys.executable)
+        try:
+            cwd = Path(os.getcwd()).resolve()
+        except Exception:
+            cwd = Path(".")
+        frozen = bool(getattr(sys, "frozen", False))
+        self.log.info("Executable: %s (frozen=%s)", exe_path, frozen)
+        self.log.info("Working directory: %s", cwd)
+        self.log.info("App root (resources): %s", paths.app_root())
+        self._enqueue(f"Executable: {exe_path} (frozen={frozen})")
+        self._enqueue(f"Working directory: {cwd}")
+        self._enqueue(f"App root: {paths.app_root()}")
+        # Surface BUILD_INFO.txt (staged into the package by the GitHub
+        # Actions workflow) when present, so the operator can confirm the
+        # exact build hash / workflow run shipped to them.
+        try:
+            build_info = paths.app_root() / "BUILD_INFO.txt"
+            if build_info.exists():
+                self._enqueue(f"Build info: {build_info}")
+                for line in build_info.read_text(encoding="utf-8", errors="replace").splitlines():
+                    line = line.strip()
+                    if line:
+                        self._enqueue(f"  {line}")
+                        self.log.info("BUILD_INFO: %s", line)
+        except Exception:
+            pass
         scanner.log_safe_quick_scan_banner(on_line=self._enqueue)
         self._enqueue(f"{__app_name__} v{__version__} ready.")
         self._enqueue(f"Logs: {paths.logs_dir()}")

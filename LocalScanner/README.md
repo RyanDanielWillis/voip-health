@@ -223,11 +223,15 @@ and can be edited freely.
 ### Troubleshooting: "scan never completes" / Quick Scan hangs
 
 Starting in **2.2.0** (`__build_tag__ = "Safe Quick Scan profile"`) the
-client emits these two lines at startup, both to the GUI log box and
-to `logs/voipscan.log`:
+client emits these lines at startup, both to the GUI log box and to
+`logs/voipscan.log`:
 
 ```
 VoIP Health Check LocalScanner version 2.2.0 starting (build: Safe Quick Scan profile)
+Executable: <full path to running exe> (frozen=True)
+Working directory: <full path>
+App root: <full path>
+Build info: <path>\BUILD_INFO.txt
 [safe] Safe Quick Scan profile active — build 2.2.0 (Safe Quick Scan profile). Legacy broad sweep across 192.168.1.0/24 + 192.168.41.0/24 is disabled in this build.
 ```
 
@@ -235,20 +239,37 @@ The version is also rendered as a chip in the upper-right of the GUI
 header. If both the startup banner and the chip read `2.2.0` (or
 later) you are on the safe build.
 
-If your log instead shows a line like:
+The CI-built distribution package now also contains:
 
-```
-[INFO] voipscan: Running Quick Scan: '...\nmap.exe' -sT -Pn --unprivileged -T4 -p T:...,U:5060,5061 --open 192.168.1.0/24 192.168.41.0/24
-```
+* `VoIPHealthCheck.exe` — canonical name (existing shortcuts keep working).
+* `VoIPHealthCheck-2.2.0.exe` — versioned copy. **Prefer launching this
+  one** so the file name itself tells you which build is running.
+* `BUILD_INFO.txt` — version, build tag, git SHA, GitHub Actions
+  workflow run id, and a UTC build timestamp.
+* `VERSION.txt` — single-line version string for tooling / quick checks.
 
-you are running an **old executable** (the broad two-/24 sweep with a
-forbidden `U:5060,5061` UDP spec under `-sT`). To recover:
+If your log shows version `2.0.0`, an old `Quick Scan: ...
+192.168.1.0/24 192.168.41.0/24` line, or no `Executable:` /
+`Working directory:` lines at all, you are running an **old
+executable** (likely a stale shortcut to `VoipScanner_Desktop\` from a
+previous install). To recover:
 
-1. Download the latest `VoIPHealthCheck-windows-package` artifact from
+1. Delete the old `VoipScanner_Desktop` folder (and any desktop or
+   Start Menu shortcuts that point at it). Confirm there is no
+   `VoIPHealthCheck.exe` left under your old install path.
+2. Download the latest `VoIPHealthCheck-windows-package` artifact from
    the **Build LocalScanner Windows EXE** workflow on GitHub Actions.
-2. Replace `VoIPHealthCheck.exe` (and the sibling `nmap/` folder if
-   present) with the freshly downloaded files.
-3. If you are running from source, `git pull` and re-run
+3. **Extract the zip to a fresh folder** (for example
+   `C:\Tools\VoIPHealthCheck-2.2.0\`). Do not extract on top of an
+   older folder — the OS may keep the old exe if file names collide.
+4. Launch `VoIPHealthCheck-2.2.0.exe` from inside the freshly
+   extracted folder. Confirm:
+   * The startup banner reads `version 2.2.0 starting (build: Safe
+     Quick Scan profile)`.
+   * The `Executable:` line points at the freshly extracted folder.
+   * `BUILD_INFO.txt` exists next to the exe and lists the expected
+     git SHA / workflow run.
+5. If you are running from source, `git pull` and re-run
    `python voipscan_app.py` — the safe profile is enforced in
    `voipscan/scanner.py:build_quick_profile`, which now refuses any
    call that targets `192.168.1.0/24` / `192.168.41.0/24` or that
@@ -336,15 +357,26 @@ build_tools\build_windows.bat
 
 Output: `LocalScanner\dist\VoIPHealthCheck.exe` (one-file, no installer).
 
-When distributing, ship the `.exe` *with* a sibling `nmap/` folder:
+When distributing, ship the `.exe` *with* a sibling `nmap/` folder.
+The CI workflow (and `build_windows.bat` locally) stage a
+self-identifying package so an operator can confirm what they are
+running without launching the GUI:
 
 ```
 VoIPHealthCheck/
-├── VoIPHealthCheck.exe
+├── VoIPHealthCheck.exe              # canonical name (keeps shortcuts working)
+├── VoIPHealthCheck-2.2.0.exe        # versioned copy — prefer launching this
+├── BUILD_INFO.txt                   # version, build tag, git SHA, workflow run id, UTC timestamp
+├── VERSION.txt                      # single-line version string
 ├── nmap/
 │   └── nmap.exe (+ data files)
 └── (logs/, reports/ are created on first run)
 ```
+
+The two exe files are byte-identical — both are produced from the same
+PyInstaller build. Keep both: shortcuts pointing at the canonical name
+keep working, and the versioned name makes it obvious at a glance
+which build is in the folder.
 
 ## Where things go
 

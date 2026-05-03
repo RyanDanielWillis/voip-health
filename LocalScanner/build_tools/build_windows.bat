@@ -18,8 +18,12 @@ python -m pip install pyinstaller || goto :err
 echo [build] Running PyInstaller...
 pyinstaller build_tools\voipscan.spec --noconfirm || goto :err
 
+echo [build] Staging self-identifying package (version + BUILD_INFO.txt + versioned exe)...
+python build_tools\stage_package.py || goto :err
+
 echo.
 echo [build] Done. Portable exe is at: dist\VoIPHealthCheck.exe
+echo [build] Self-identifying package staged at: package\VoIPHealthCheck\
 echo [build] Remember to distribute the adjacent ^"nmap\^" folder beside the exe.
 popd
 endlocal
