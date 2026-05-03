@@ -1,3 +1,28 @@
+============================================================
+ LEGACY — DO NOT RUN. Kept for historical reference only.
+============================================================
+
+This README documents the *pre-2.2.0* VoipScan Local Auditor.
+Its scripts are no longer launchable: local_scanner.py and
+advanced_scanner.py both raise RuntimeError on import, and
+run_scanner.bat prints a legacy notice instead of executing.
+
+Why: the legacy "Quick Scan" defaulted to scanning two full
+/24 subnets ("192.168.1.0/24 192.168.41.0/24") with both TCP
+and UDP ports passed under a -sT connect scan. That command
+routinely ran for 10+ minutes and presented as a hang in the
+GUI. If your logs contain a line like
+
+    Running Quick Scan: ... 192.168.1.0/24 192.168.41.0/24 ...
+
+you are running the legacy build. Download the current
+VoIPHealthCheck artifact from the
+"Build LocalScanner Windows EXE" GitHub Actions workflow.
+
+The historical instructions below describe the OLD behavior
+and are preserved unedited for archaeology.
+------------------------------------------------------------
+
 VoipScan Local Auditor (v1.2)
 This tool performs a professional-grade network audit to verify compliance with Star2Star/Starbox connectivity, firewall, and port requirements. It provides automated, actionable analysis for VoIP health.
 

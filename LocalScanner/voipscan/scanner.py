@@ -49,22 +49,65 @@ from .report import (
 
 # --- Tunable nmap knobs (legacy nmap pass) -------------------------------
 QUICK_TCP_PORTS = "22,80,443,1935,5038,5060,5061,5160,8080,8088,8089"
-QUICK_UDP_PORTS = "5060,5061"
 TARGETED_TCP_PORTS = "22,80,443,1935,5038,5060,5061,5160,5222,8080,8088,8089"
 TARGETED_UDP_PORTS = "5060,5061,10000-10100"
 NMAP_TIMING = "-T4"
-# Default target list for Quick Scan when the operator hasn't specified
-# anything. Kept narrow on purpose — historically this was two full /24s
-# which made the scan run for 10+ minutes and frequently appear to hang.
-# When auto-detection finds a gateway we use just that host instead.
+# Default target list for Quick Scan. Intentionally empty — the old
+# build defaulted to two full /24s ("192.168.1.0/24 192.168.41.0/24"),
+# which routinely ran for 10+ minutes and made the GUI appear hung.
+# An empty list forces the caller to provide a real, bounded target
+# (gateway / firewall / starbox) and makes the legacy broad sweep
+# impossible to launch from this build.
 QUICK_SUBNETS: list[str] = []
 # Hard ceiling so a single unresponsive host can't stall the whole scan.
 NMAP_HOST_TIMEOUT = "60s"
 NMAP_MAX_RETRIES = "1"
 # Overall subprocess wall-clock cap. Kept generous enough that a single
-# /24 sweep can complete, but small enough that an unresponsive network
+# host scan can complete, but small enough that an unresponsive network
 # is reported as a timeout rather than left to hang.
-NMAP_OVERALL_TIMEOUT_SECONDS = 300
+NMAP_OVERALL_TIMEOUT_SECONDS = 180
+# Hard cap on how many targets the safe Quick Scan will accept. Anything
+# larger almost certainly means a caller is trying to revive the legacy
+# broad sweep — refuse it explicitly.
+QUICK_SCAN_MAX_TARGETS = 8
+# Fingerprints of the old broad-sweep target list. Any match aborts.
+LEGACY_BROAD_TARGETS = {"192.168.1.0/24", "192.168.41.0/24"}
+
+
+def _safe_build_tag() -> str:
+    """Return a stable identifier for the active scan profile.
+
+    Surfaced in the startup banner and in the ``Running safe ...`` log
+    line so the operator can confirm at a glance that they are NOT
+    running the old broad-sweep build.
+    """
+    try:
+        from . import __version__, __build_tag__  # local import avoids cycle
+    except Exception:
+        return "unknown"
+    return f"{__version__} ({__build_tag__})"
+
+
+def log_safe_quick_scan_banner(on_line: Callable[[str], None] | None = None) -> None:
+    """Emit the 'safe Quick Scan profile active' banner.
+
+    Called from the GUI at startup so both the rotating log file and
+    the streaming log box show a clear, greppable line confirming this
+    build does not run the legacy two-/24 sweep.
+    """
+    log = get_logger()
+    tag = _safe_build_tag()
+    msg = (
+        f"Safe Quick Scan profile active — build {tag}. "
+        "Legacy broad sweep across 192.168.1.0/24 + 192.168.41.0/24 "
+        "is disabled in this build."
+    )
+    log.info(msg)
+    if on_line is not None:
+        try:
+            on_line(f"[safe] {msg}")
+        except Exception:
+            pass
 
 
 @dataclass
@@ -99,10 +142,26 @@ def find_nmap() -> str | None:
 
 
 def build_quick_profile(targets: Iterable[str] | None = None) -> ScanProfile:
-    # ``-sT`` is a TCP connect scan and silently ignores UDP ports listed
-    # alongside it, so we only ask nmap for TCP ports here. UDP probing
-    # belongs in the Python socket port tests (and the targeted profile),
-    # which already cover the SIP/RTP UDP surface.
+    """Build the safe Quick Scan profile.
+
+    The legacy build of this function defaulted to two full /24 subnets
+    ("192.168.1.0/24 192.168.41.0/24") with TCP **and** UDP ports listed
+    under a ``-sT`` connect scan, which (a) silently dropped the UDP
+    entries because ``-sT`` ignores them and (b) routinely ran for 10+
+    minutes — long enough that operators reported the GUI as hung.
+
+    The safe profile:
+
+    * Accepts only operator-supplied / auto-detected hosts. ``QUICK_SUBNETS``
+      is empty by design, so calling this with no targets raises
+      ``ScanError`` instead of falling back to a broad sweep.
+    * Rejects any of the historic broad-sweep CIDRs.
+    * Caps the target list at ``QUICK_SCAN_MAX_TARGETS`` so a caller
+      that accidentally passes a long list still can't recreate the old
+      multi-/24 behaviour.
+    * Stays TCP-only. ``-sT`` ignores UDP ports anyway; UDP probing is
+      handled by the Python port tests and the targeted scan profile.
+    """
     args = [
         "-sT",
         "-Pn",
@@ -116,8 +175,31 @@ def build_quick_profile(targets: Iterable[str] | None = None) -> ScanProfile:
     cleaned: list[str] = []
     if targets:
         cleaned = [t.strip() for t in targets if t and t.strip()]
+
     if not cleaned:
-        cleaned = list(QUICK_SUBNETS)
+        raise ScanError(
+            "Safe Quick Scan refuses to run with no target. The legacy "
+            "broad sweep across 192.168.1.0/24 + 192.168.41.0/24 has "
+            "been removed — supply a Gateway / Firewall / Starbox IP "
+            "under Advanced or rely on the auto-detected gateway."
+        )
+
+    bad = sorted(t for t in cleaned if t in LEGACY_BROAD_TARGETS)
+    if bad:
+        raise ScanError(
+            "Safe Quick Scan refuses the legacy broad-sweep target(s) "
+            f"{bad}. These were the default in the old build and made "
+            "scans appear hung; pass a single host (gateway / firewall "
+            "/ starbox) instead."
+        )
+
+    if len(cleaned) > QUICK_SCAN_MAX_TARGETS:
+        raise ScanError(
+            f"Safe Quick Scan accepts at most {QUICK_SCAN_MAX_TARGETS} "
+            f"targets, got {len(cleaned)}. Pass a small set of explicit "
+            "hosts rather than a subnet sweep."
+        )
+
     return ScanProfile(name="Quick Scan", args=args, targets=cleaned)
 
 
@@ -162,9 +244,32 @@ def run_nmap_profile(
         )
 
     command = _nmap_command(profile, nmap_path)
-    log.info("Running %s: %s", profile.name, shlex.join(command))
+    # Sanity guard: the historic broad sweep had two /24 CIDRs *and* a
+    # ``U:5060,5061`` UDP port spec under ``-sT``. If somebody manages
+    # to re-introduce either we want to fail loudly here rather than
+    # silently launch a 10-minute hang.
+    cmdline = shlex.join(command)
+    if any(t in LEGACY_BROAD_TARGETS for t in profile.targets):
+        raise ScanError(
+            "Refusing to launch nmap against legacy broad-sweep targets "
+            f"({sorted(t for t in profile.targets if t in LEGACY_BROAD_TARGETS)})."
+        )
+    if "-sT" in profile.args and any(
+        a.startswith("U:") or ",U:" in a for a in profile.args
+    ):
+        raise ScanError(
+            "Refusing to launch nmap: ``-sT`` connect scan was paired "
+            "with UDP ports (U:...). The legacy Quick Scan did this and "
+            "wasted UDP probes — UDP belongs in the Targeted profile."
+        )
+    log.info(
+        "Running safe %s (build %s): %s",
+        profile.name,
+        _safe_build_tag(),
+        cmdline,
+    )
     on_line(f"[scan] {profile.name} starting (timeout {overall_timeout}s)")
-    on_line(f"$ {shlex.join(command)}")
+    on_line(f"$ {cmdline}")
 
     stdout_lines: list[str] = []
     stderr_lines: list[str] = []

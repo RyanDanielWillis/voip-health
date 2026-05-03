@@ -26,6 +26,7 @@ from typing import Optional
 
 from . import (
     __app_name__,
+    __build_tag__,
     __version__,
     capture,
     interpret,
@@ -117,6 +118,21 @@ class VoipScanApp:
 
         logger.register_gui_sink(self._enqueue)
         self.root.after(100, self._drain_queue)
+        # Startup banner. The first two log lines are deliberately
+        # greppable — if a customer reports a hung scan we ask them to
+        # confirm they see "VoIP Health Check LocalScanner version ..."
+        # and "Safe Quick Scan profile active". Their absence in the log
+        # means they are running an old executable.
+        self.log.info(
+            "VoIP Health Check LocalScanner version %s starting (build: %s)",
+            __version__,
+            __build_tag__,
+        )
+        self._enqueue(
+            f"VoIP Health Check LocalScanner version {__version__} starting "
+            f"(build: {__build_tag__})."
+        )
+        scanner.log_safe_quick_scan_banner(on_line=self._enqueue)
         self._enqueue(f"{__app_name__} v{__version__} ready.")
         self._enqueue(f"Logs: {paths.logs_dir()}")
         nmap_path = scanner.find_nmap()
@@ -277,6 +293,22 @@ class VoipScanApp:
             text="Evidence-focused VoIP network diagnostics for Windows.",
             style="Subheader.TLabel",
         ).pack(anchor="w")
+        # Visible build/version chip on the right of the header so the
+        # operator can confirm at a glance which build is running. If a
+        # customer reports the legacy hang, ask them to read this label
+        # and check it matches the latest GitHub Actions artifact.
+        version_col = ttk.Frame(header, style="TFrame")
+        version_col.pack(side="right")
+        ttk.Label(
+            version_col,
+            text=f"v{__version__}",
+            style="Header.TLabel",
+        ).pack(anchor="e")
+        ttk.Label(
+            version_col,
+            text=__build_tag__,
+            style="Subheader.TLabel",
+        ).pack(anchor="e")
 
     # -- Primary actions --------------------------------------------------
     def _build_primary_actions(self) -> None:

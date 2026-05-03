@@ -220,6 +220,41 @@ The constants live at the top of `voipscan/scanner.py`
 (`QUICK_TCP_PORTS`, `NMAP_HOST_TIMEOUT`, `NMAP_OVERALL_TIMEOUT_SECONDS`)
 and can be edited freely.
 
+### Troubleshooting: "scan never completes" / Quick Scan hangs
+
+Starting in **2.2.0** (`__build_tag__ = "Safe Quick Scan profile"`) the
+client emits these two lines at startup, both to the GUI log box and
+to `logs/voipscan.log`:
+
+```
+VoIP Health Check LocalScanner version 2.2.0 starting (build: Safe Quick Scan profile)
+[safe] Safe Quick Scan profile active — build 2.2.0 (Safe Quick Scan profile). Legacy broad sweep across 192.168.1.0/24 + 192.168.41.0/24 is disabled in this build.
+```
+
+The version is also rendered as a chip in the upper-right of the GUI
+header. If both the startup banner and the chip read `2.2.0` (or
+later) you are on the safe build.
+
+If your log instead shows a line like:
+
+```
+[INFO] voipscan: Running Quick Scan: '...\nmap.exe' -sT -Pn --unprivileged -T4 -p T:...,U:5060,5061 --open 192.168.1.0/24 192.168.41.0/24
+```
+
+you are running an **old executable** (the broad two-/24 sweep with a
+forbidden `U:5060,5061` UDP spec under `-sT`). To recover:
+
+1. Download the latest `VoIPHealthCheck-windows-package` artifact from
+   the **Build LocalScanner Windows EXE** workflow on GitHub Actions.
+2. Replace `VoIPHealthCheck.exe` (and the sibling `nmap/` folder if
+   present) with the freshly downloaded files.
+3. If you are running from source, `git pull` and re-run
+   `python voipscan_app.py` — the safe profile is enforced in
+   `voipscan/scanner.py:build_quick_profile`, which now refuses any
+   call that targets `192.168.1.0/24` / `192.168.41.0/24` or that
+   pairs `-sT` with UDP ports. The legacy `legacy_backup/` scripts
+   will also refuse to import.
+
 ## Output
 
 * The streaming log box mirrors every module's progress live during the

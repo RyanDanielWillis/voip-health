@@ -1,11 +1,29 @@
-import json
-import requests
-import platform
-import subprocess
-import logging
-import os
-from tqdm import tqdm
-import re
+"""LEGACY — DO NOT RUN. Kept for reference only.
+
+This is the pre-2.2.0 ``advanced_scanner.py``. The active client is
+``LocalScanner/voipscan/`` (launched via ``voipscan_app.py``). This
+file is preserved so historical compliance reports can be matched
+against the exact code that produced them; running it would call the
+old broad-sweep nmap path and re-introduce the hang the 2.2.0 release
+fixed.
+"""
+import sys
+
+raise RuntimeError(
+    "LEGACY advanced_scanner.py is disabled. Run LocalScanner/voipscan_app.py "
+    "(or `python -m voipscan`) instead — that path uses the safe Quick Scan "
+    "profile that replaced the broad two-/24 sweep."
+)
+
+
+import json  # noqa: E402  -- unreachable, kept for historical reference
+import requests  # noqa: E402
+import platform  # noqa: E402
+import subprocess  # noqa: E402
+import logging  # noqa: E402
+import os  # noqa: E402
+from tqdm import tqdm  # noqa: E402
+import re  # noqa: E402
 
 # IMPORTANT: Update this with your actual VPS domain or IP
 VPS_URL = "http://74.208.207.186/api/upload-audit"

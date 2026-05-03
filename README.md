@@ -66,6 +66,25 @@ get the latest build:
 The hosted homepage at https://voipscan.danielscience.com also surfaces
 the same screenshot, copy and download instructions for end users.
 
+### Troubleshooting: scan appears to hang
+
+The 2.2.0 build replaced the legacy broad nmap sweep with the **Safe
+Quick Scan profile**. On startup the client now logs:
+
+```
+VoIP Health Check LocalScanner version 2.2.0 starting (build: Safe Quick Scan profile)
+[safe] Safe Quick Scan profile active ...
+```
+
+If your log instead contains a line like
+`Running Quick Scan: ... 192.168.1.0/24 192.168.41.0/24 ...` you are
+running an **older executable or older `LocalScanner/` folder**.
+Download the latest `VoIPHealthCheck-windows-package` artifact from
+the *Build LocalScanner Windows EXE* GitHub Actions workflow and
+replace your `VoIPHealthCheck.exe`, or `git pull` and re-run from
+source. See [LocalScanner/README.md](LocalScanner/README.md#troubleshooting-scan-never-completes--quick-scan-hangs)
+for details.
+
 ## Output:
 🔍 SCANNING 192.168.1.100...
 ❌ ONE-WAY AUDIO DETECTED

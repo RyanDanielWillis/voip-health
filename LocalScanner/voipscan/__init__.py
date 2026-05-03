@@ -16,5 +16,10 @@ Modules:
     ui            — Tkinter GUI with streaming log + post-scan summary view.
 """
 
-__version__ = "2.1.0"
+__version__ = "2.2.0"
 __app_name__ = "VoIP Health Check"
+# Human-readable build tag surfaced in the GUI header and in the
+# startup log line so the operator can tell at a glance whether they
+# are running an updated build (the old broad two-/24 Quick Scan was
+# removed in 2.2.0). Keep this short — it is rendered as a chip.
+__build_tag__ = "Safe Quick Scan profile"
