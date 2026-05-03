@@ -301,7 +301,7 @@ ul {
  */
 .intro-grid {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 360px);
+    grid-template-columns: minmax(0, 1fr) minmax(0, 400px);
     gap: 24px;
     align-items: start;
     margin-bottom: 12px;
@@ -322,6 +322,9 @@ ul {
     gap: 10px;
     position: sticky;
     top: 76px;
+    max-width: 400px;
+    width: 100%;
+    margin-left: auto;
 }
 
 .client-showcase h3 {
@@ -332,6 +335,7 @@ ul {
 
 .client-showcase img {
     width: 100%;
+    max-width: 400px;
     height: auto;
     display: block;
     border-radius: 6px;
