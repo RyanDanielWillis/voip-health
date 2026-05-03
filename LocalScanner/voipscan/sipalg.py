@@ -270,8 +270,10 @@ def gather_sip_alg_evidence(
             "result": "inconclusive",
             "confidence": "inconclusive",
             "detail": (
-                "No external SIP test endpoint configured. Configure one "
-                "in the Advanced section to enable header-rewrite detection."
+                "No external SIP test endpoint configured (Advanced field "
+                "left blank). Skipped cleanly — SIP ALG proof from this "
+                "method is limited/inconclusive without a configured "
+                "endpoint. Other non-endpoint ALG signals still ran."
             ),
             "evidence": "",
         })
@@ -400,13 +402,15 @@ def gather_sip_alg_evidence(
 
     if needs_external:
         explanation_bits.append(
-            "No external SIP test endpoint configured — header-rewrite "
-            "detection (the only client-side method that can produce "
-            "strong evidence) is disabled."
+            "No external SIP test endpoint configured — that field is "
+            "optional. SIP ALG proof is therefore limited/inconclusive: "
+            "the header-rewrite test (the only client-side method that "
+            "can produce strong evidence) was skipped, but other "
+            "non-endpoint ALG signals ran."
         )
         suggestions.append(
-            "Configure a SIP echo/test endpoint (host:port) under Advanced "
-            "to enable header-rewrite detection."
+            "Optional: paste a SIP echo/test endpoint (host:port) under "
+            "Advanced to enable header-rewrite detection on a re-run."
         )
 
     suggestions.extend([

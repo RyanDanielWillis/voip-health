@@ -32,6 +32,7 @@ from .report import (
     DeviceAttribution,
     FormInputs,
     Issue,
+    ResolvedInputs,
     ScanReport,
     SipAlgEvidence,
     VlanEvidence,
@@ -191,20 +192,35 @@ run_profile = run_nmap_profile
 # ---------------------------------------------------------------------------
 
 def _attribute_blocking_device(report: ScanReport) -> DeviceAttribution:
-    """Best-effort guess about WHERE traffic is being dropped/rewritten."""
+    """Best-effort guess about WHERE traffic is being dropped/rewritten.
+
+    Honors the rule that blank Advanced fields are NOT errors and must
+    not invent firewall/gateway equivalence. When firewall_ip is blank
+    we stay at ``gateway-or-firewall`` and explain confidence is limited
+    by the missing input.
+    """
+    auto_gw = report.gateway.default_gateway or ""
+    user_gw = (report.form.gateway_ip or "").strip()
+    user_fw = (report.form.firewall_ip or "").strip()
+    user_sb = (report.form.starbox_ip or "").strip()
+    effective_gw = user_gw or auto_gw
+
+    base = DeviceAttribution(
+        user_provided_gateway_ip=user_gw,
+        user_provided_firewall_ip=user_fw,
+        user_provided_starbox_ip=user_sb,
+        auto_detected_gateway_ip=auto_gw if not user_gw else "",
+    )
+
     closed_or_filtered = [
         p for p in report.port_tests
         if p.result in ("closed", "filtered", "open|filtered")
     ]
     if not closed_or_filtered:
-        return DeviceAttribution(
-            likely_device="none",
-            confidence="strong",
-            rationale="All probed ports succeeded — no blocking detected.",
-            user_provided_gateway_ip=report.form.gateway_ip,
-            user_provided_firewall_ip=report.form.firewall_ip,
-            user_provided_starbox_ip=report.form.starbox_ip,
-        )
+        base.likely_device = "none"
+        base.confidence = "strong"
+        base.rationale = "All probed ports succeeded — no blocking detected."
+        return base
 
     # If only UDP RTP/SIP ranges are filtered, blame gateway/firewall.
     udp_only = all(p.protocol.lower() == "udp" for p in closed_or_filtered)
@@ -225,21 +241,38 @@ def _attribute_blocking_device(report: ScanReport) -> DeviceAttribution:
     likely = "gateway-or-firewall"
     confidence = "likely"
 
-    fw = report.form.firewall_ip
-    gw = report.form.gateway_ip
-    if fw and gw and fw != gw:
+    if user_fw and effective_gw and user_fw != effective_gw:
         rationale_parts.append(
-            f"Operator distinguished firewall ({fw}) from gateway ({gw}); "
-            "the firewall is the most likely culprit since it is in line."
+            f"Operator distinguished firewall ({user_fw}) from gateway "
+            f"({effective_gw}); the firewall is the most likely culprit "
+            "since it is in line."
         )
         likely = "firewall"
         confidence = "likely"
-    elif gw:
+    elif user_fw and effective_gw and user_fw == effective_gw:
         rationale_parts.append(
-            f"Operator-supplied gateway is {gw}; absent a separate firewall, "
-            "the gateway/router is the most likely culprit."
+            f"Operator confirmed gateway and firewall are the same device "
+            f"({user_fw})."
         )
         likely = "gateway"
+    elif effective_gw and not user_fw:
+        gw_label = (
+            f"gateway {effective_gw} (auto-detected)"
+            if not user_gw
+            else f"operator-supplied gateway {effective_gw}"
+        )
+        rationale_parts.append(
+            f"No firewall IP was specified, so we cannot separate the "
+            f"firewall from the {gw_label}. Treating the in-path culprit "
+            "as 'gateway or firewall'."
+        )
+        # Stay at gateway-or-firewall, don't promote to 'gateway'.
+    elif not effective_gw:
+        rationale_parts.append(
+            "Default gateway could not be determined and none was supplied; "
+            "device attribution is limited to the path classification."
+        )
+        confidence = "inconclusive"
 
     if report.gateway.gateway_vendor:
         rationale_parts.append(
@@ -253,14 +286,10 @@ def _attribute_blocking_device(report: ScanReport) -> DeviceAttribution:
         )
         confidence = "inconclusive"
 
-    return DeviceAttribution(
-        likely_device=likely,
-        confidence=confidence,
-        rationale=" ".join(rationale_parts).strip(),
-        user_provided_gateway_ip=report.form.gateway_ip,
-        user_provided_firewall_ip=report.form.firewall_ip,
-        user_provided_starbox_ip=report.form.starbox_ip,
-    )
+    base.likely_device = likely
+    base.confidence = confidence
+    base.rationale = " ".join(rationale_parts).strip()
+    return base
 
 
 def _summarize_issues(report: ScanReport) -> tuple[list[Issue], list[str]]:
@@ -286,21 +315,34 @@ def _summarize_issues(report: ScanReport) -> tuple[list[Issue], list[str]]:
         ))
         fixes.append("Disable SIP ALG / SIP helper on the router/firewall.")
     elif report.sip_alg.overall == "inconclusive":
+        if report.sip_alg.needs_external_endpoint:
+            detail = (
+                "No SIP test endpoint was configured, so header-rewrite "
+                "detection (the only definitive client-side method) was "
+                "skipped. Other indirect ALG signals were still gathered."
+            )
+            fix = (
+                "Optional: paste a SIP echo/test endpoint (host:port) "
+                "under Advanced to enable rewrite detection. Otherwise, "
+                "capture SIP traffic with Wireshark before/after the "
+                "firewall and compare Via/Contact headers."
+            )
+        else:
+            detail = (
+                "Indirect SIP ALG signals were mixed or insufficient. "
+                "Capture-based proof remains the definitive next step."
+            )
+            fix = (
+                "Capture SIP traffic with Wireshark before/after the "
+                "firewall and compare Via/Contact headers."
+            )
         issues.append(Issue(
             code="sip_alg_unknown",
             title="SIP ALG state is inconclusive",
             severity="info",
             confidence="inconclusive",
-            detail=(
-                "Client-only checks cannot prove SIP ALG without a "
-                "cooperating SIP echo endpoint. Configure one to enable "
-                "header-rewrite detection."
-            ),
-            suggested_fix=(
-                "Provide a SIP test endpoint host:port under Advanced, "
-                "or capture SIP traffic with Wireshark before/after the "
-                "firewall and compare Via/Contact headers."
-            ),
+            detail=detail,
+            suggested_fix=fix,
         ))
 
     # Port problems
@@ -394,6 +436,46 @@ def run_evidence_scan(
 
     on_log("[scan] === Evidence scan starting ===")
 
+    # 0. Record what the operator supplied vs what we'll auto-detect.
+    resolved = ResolvedInputs()
+    for key, value in (
+        ("problem_experienced", form.problem_experienced),
+        ("other_problem", form.other_problem),
+        ("hosted_platform", form.hosted_platform),
+        ("gateway_ip", form.gateway_ip),
+        ("firewall_ip", form.firewall_ip),
+        ("starbox_ip", form.starbox_ip),
+        ("sip_test_endpoint", form.sip_test_endpoint),
+    ):
+        if value and str(value).strip():
+            resolved.manual_inputs[key] = str(value).strip()
+
+    if not (form.problem_experienced or form.other_problem):
+        resolved.notes.append("no problem specified — running general diagnostics")
+        on_log("[scan] No problem specified — running general diagnostics.")
+    if not form.hosted_platform:
+        resolved.notes.append(
+            "hosted_platform left blank — treating as auto/unknown and "
+            "inferring context from scan data where possible"
+        )
+        on_log("[scan] Hosted platform: auto/unknown (will infer from scan data).")
+    if not form.starbox_ip:
+        resolved.skipped.append("starbox_specific_checks")
+        on_log("[scan] Starbox IP not provided — skipping Starbox-specific checks cleanly.")
+    if not form.firewall_ip:
+        resolved.notes.append(
+            "firewall_ip left blank — not assuming it equals gateway; "
+            "in-path culprit reported as gateway-or-firewall"
+        )
+    if not form.sip_test_endpoint:
+        resolved.skipped.append("external_sip_endpoint_probes")
+        on_log(
+            "[scan] No SIP test endpoint configured — external SIP ALG "
+            "probes will be skipped; non-endpoint ALG evidence still runs."
+        )
+
+    report.resolved_inputs = resolved
+
     # 1. Host identity
     on_log("[scan] Gathering host identity...")
     report.host = fill_basic_host_identity()
@@ -424,6 +506,17 @@ def run_evidence_scan(
                 f"MAC={report.gateway.gateway_mac or '?'} "
                 f"vendor={report.gateway.gateway_vendor or '?'}"
             )
+            if not form.gateway_ip:
+                resolved.auto_detected["gateway_ip"] = report.gateway.default_gateway
+                on_log(
+                    f"[scan] Gateway IP auto-detected as "
+                    f"{report.gateway.default_gateway} (Advanced was blank)."
+                )
+        elif not form.gateway_ip:
+            resolved.notes.append(
+                "gateway_ip blank and could not be auto-detected from OS "
+                "routing — gateway-dependent checks will note this limitation"
+            )
     except Exception:
         log_exception("gateway gathering failed")
     try:
@@ -434,9 +527,12 @@ def run_evidence_scan(
     # 4. VLAN evidence
     on_log("[scan] Looking for VLAN 41 evidence...")
     try:
+        # Use whichever gateway we have — operator-supplied takes priority,
+        # otherwise the auto-detected one. Either is fine for the subnet hint.
+        gw_for_vlan = form.gateway_ip or report.gateway.default_gateway
         report.vlan = vlan.assess_vlan(
             report.interfaces,
-            user_gateway=form.gateway_ip,
+            user_gateway=gw_for_vlan,
         )
         on_log(
             f"[scan] VLAN {report.vlan.target_vlan}: "
@@ -456,7 +552,12 @@ def run_evidence_scan(
     try:
         overrides: dict[str, str] = {}
         if form.starbox_ip:
+            # Operator pointed us at a specific Starbox — use it.
             overrides["sangoma_host"] = form.starbox_ip
+        # When starbox_ip is blank we deliberately do NOT inject a fake
+        # target. Sangoma-bound rules fall back to DEFAULT_SANGOMA_HOST,
+        # which is a real public host, so reachability data stays valid
+        # without inventing a Starbox the customer doesn't have.
         report.port_tests = porttests.run_port_tests(
             user_overrides=overrides,
             on_log=on_log,
@@ -468,19 +569,33 @@ def run_evidence_scan(
     # 5b. Optional nmap pass
     if use_nmap and find_nmap():
         try:
+            # Build the target list from whatever is explicitly available.
+            # Blank Advanced fields don't contribute fake targets; we only
+            # add the auto-detected gateway when the operator gave us
+            # nothing at all, since pointing nmap at a random public host
+            # without context isn't useful.
             targets: list[str] = []
             for v in (form.gateway_ip, form.firewall_ip, form.starbox_ip):
                 if v and v.strip():
                     targets.append(v.strip())
+            if not targets and report.gateway.default_gateway:
+                targets = [report.gateway.default_gateway]
+                on_log(
+                    f"[scan] No Advanced targets given — nmap pass will use "
+                    f"auto-detected gateway {targets[0]}."
+                )
             if not targets:
-                targets = [sangoma_ports.DEFAULT_SANGOMA_HOST]
-            profile = build_targeted_profile(targets)
-            on_log(f"[scan] Optional nmap pass against {targets}")
-            nmap_result = run_nmap_profile(
-                profile, on_line=on_log, cancel_event=cancel_event
-            )
-            report.nmap_runs.append(nmap_result)
-            porttests.merge_nmap_evidence(report.port_tests, nmap_result.get("stdout", ""))
+                on_log("[scan] No nmap targets available — skipping nmap pass.")
+            else:
+                profile = build_targeted_profile(targets)
+                on_log(f"[scan] Optional nmap pass against {targets}")
+                nmap_result = run_nmap_profile(
+                    profile, on_line=on_log, cancel_event=cancel_event
+                )
+                report.nmap_runs.append(nmap_result)
+                porttests.merge_nmap_evidence(
+                    report.port_tests, nmap_result.get("stdout", "")
+                )
         except ScanError as e:
             on_log(f"[scan] nmap skipped: {e}")
         except Exception:

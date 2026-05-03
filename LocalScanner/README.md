@@ -67,6 +67,27 @@ sends UDP and TCP OPTIONS messages and compares the reply's `Via` /
 `Contact` headers against what was sent — a mismatch is **strong**
 evidence of header rewriting, i.e. SIP ALG.
 
+### Advanced is fully optional (auto-detected where possible)
+
+Every field under *Advanced* is optional. If you leave a field blank
+the scanner does **not** treat it as missing or as an error — it
+either auto-detects the value or skips that specific check cleanly:
+
+| Field | Blank behavior |
+|-------|----------------|
+| Hosted Platform | Defaults to *Auto / unknown*. The scanner infers context from scan data instead of forcing a platform. |
+| Gateway IP | Auto-detected from `ipconfig` / `route` (Windows) or `ip route` (Linux). The auto value is recorded as `auto_detected` in the report. |
+| Firewall IP | Not assumed to equal the gateway. In-path attribution reports `gateway-or-firewall` and explains that confidence is limited by the missing input. |
+| Starbox IP | Starbox-specific overrides are skipped cleanly — no fake target is invented. |
+| SIP test endpoint | External SIP OPTIONS probes are skipped. The ALG verdict is reported as *limited / inconclusive*; non-endpoint ALG signals (vendor prior, NAT context, Windows services, port reachability) still run. |
+| Problem dropdown / custom problem | Both blank → scan still runs. The summary records "no problem specified" instead of forcing a problem-specific analysis. |
+
+The structured `ScanReport` carries a `resolved_inputs` block that
+splits values into `manual_inputs` (what the operator typed),
+`auto_detected` (what the scanner inferred), and `skipped` (which
+checks were intentionally left out) so the future VPS upload can tell
+provided values apart from inferred ones.
+
 ## Output
 
 * The streaming log box mirrors every module's progress live during the

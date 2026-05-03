@@ -82,7 +82,10 @@ PROBLEM_OPTIONS = [
     "phone lost registration",
 ]
 
-HOSTED_PLATFORMS = ["On-Prem", "Cloud Only", "Remote Phone"]
+# "Auto / unknown" is the default — it tells the scanner to infer the
+# hosted-platform context from scan data instead of forcing a value.
+HOSTED_PLATFORMS = ["Auto / unknown", "On-Prem", "Cloud Only", "Remote Phone"]
+HOSTED_AUTO = HOSTED_PLATFORMS[0]
 
 
 class VoipScanApp:
@@ -321,15 +324,37 @@ class VoipScanApp:
         adv_row.pack(fill="x", pady=(6, 4))
         self._advanced_open = False
         self.btn_advanced = ttk.Button(
-            adv_row, text="▼  Advanced", style="TButton", command=self._toggle_advanced
+            adv_row,
+            text="▼  Advanced (optional)",
+            style="TButton",
+            command=self._toggle_advanced,
         )
         self.btn_advanced.pack(side="left")
+        ttk.Label(
+            adv_row,
+            text="Optional — leave blank to auto-detect where possible.",
+            style="Muted.TLabel",
+        ).pack(side="left", padx=(10, 0))
 
         self.frm_advanced = ttk.Frame(card, style="Surface.TFrame")
+
+        ttk.Label(
+            self.frm_advanced,
+            text=(
+                "All Advanced fields are optional. Blank fields will be "
+                "auto-detected from the OS where possible (gateway), or "
+                "skipped cleanly (Starbox, SIP endpoint) — they will not "
+                "create warnings, fake targets, or failed scans."
+            ),
+            style="Muted.TLabel",
+            wraplength=820,
+            justify="left",
+        ).pack(fill="x", pady=(8, 4))
+
         hp = ttk.Frame(self.frm_advanced, style="Surface.TFrame")
-        hp.pack(fill="x", pady=(8, 6))
+        hp.pack(fill="x", pady=(2, 2))
         ttk.Label(hp, text="Hosted Platform:", style="Surface.TLabel").pack(side="left")
-        self.var_hosted = tk.StringVar(value=HOSTED_PLATFORMS[0])
+        self.var_hosted = tk.StringVar(value=HOSTED_AUTO)
         for label in HOSTED_PLATFORMS:
             ttk.Radiobutton(
                 hp,
@@ -338,6 +363,14 @@ class VoipScanApp:
                 variable=self.var_hosted,
                 style="TRadiobutton",
             ).pack(side="left", padx=(10, 0))
+        ttk.Label(
+            self.frm_advanced,
+            text=(
+                "  Leave on 'Auto / unknown' to let the scanner infer "
+                "context from scan data instead of forcing a platform."
+            ),
+            style="Muted.TLabel",
+        ).pack(fill="x", pady=(0, 6))
 
         ips = ttk.Frame(self.frm_advanced, style="Surface.TFrame")
         ips.pack(fill="x", pady=(2, 4))
@@ -345,22 +378,41 @@ class VoipScanApp:
         self.var_fw = tk.StringVar()
         self.var_sb = tk.StringVar()
         self.var_sip_endpoint = tk.StringVar()
-        self._ip_field(ips, "Gateway IP:", self.var_gw, 0)
-        self._ip_field(ips, "Firewall IP:", self.var_fw, 1)
-        self._ip_field(ips, "Starbox IP:", self.var_sb, 2)
+        self._ip_field(
+            ips,
+            "Gateway IP:",
+            self.var_gw,
+            0,
+            hint="auto-detected from OS routes if blank",
+        )
+        self._ip_field(
+            ips,
+            "Firewall IP:",
+            self.var_fw,
+            1,
+            hint="leave blank if you don't have one — not assumed to equal gateway",
+        )
+        self._ip_field(
+            ips,
+            "Starbox IP:",
+            self.var_sb,
+            2,
+            hint="leave blank to skip Starbox-specific checks cleanly",
+        )
         self._ip_field(
             ips,
             "SIP test endpoint (host:port):",
             self.var_sip_endpoint,
             3,
             width=28,
+            hint="leave blank to skip external SIP probes; ALG proof will be limited",
         )
 
         scan_row = ttk.Frame(card, style="Surface.TFrame")
         scan_row.pack(fill="x", pady=(10, 0))
         self.btn_scan_now = ttk.Button(
             scan_row,
-            text="Scan Now (with Advanced)",
+            text="Scan Now (Advanced is optional)",
             style="Primary.TButton",
             command=self._on_scan_now,
         )
@@ -373,6 +425,7 @@ class VoipScanApp:
         var: tk.StringVar,
         row: int,
         width: int = 22,
+        hint: str = "",
     ) -> None:
         ttk.Label(parent, text=label, style="Surface.TLabel").grid(
             row=row, column=0, sticky="w", pady=2, padx=(0, 8)
@@ -380,15 +433,21 @@ class VoipScanApp:
         ttk.Entry(parent, textvariable=var, width=width).grid(
             row=row, column=1, sticky="w", pady=2
         )
+        if hint:
+            ttk.Label(
+                parent,
+                text=f"({hint})",
+                style="Muted.TLabel",
+            ).grid(row=row, column=2, sticky="w", pady=2, padx=(8, 0))
 
     def _toggle_advanced(self) -> None:
         self._advanced_open = not self._advanced_open
         if self._advanced_open:
             self.frm_advanced.pack(fill="x", pady=(4, 0))
-            self.btn_advanced.config(text="▲  Advanced")
+            self.btn_advanced.config(text="▲  Advanced (optional)")
         else:
             self.frm_advanced.forget()
-            self.btn_advanced.config(text="▼  Advanced")
+            self.btn_advanced.config(text="▼  Advanced (optional)")
 
     # -- Results ----------------------------------------------------------
     def _build_results(self) -> None:
@@ -584,10 +643,16 @@ class VoipScanApp:
         self._scan_thread.start()
 
     def _collect_form(self) -> FormInputs:
+        # "Auto / unknown" is the GUI default for Hosted Platform; pass it
+        # through as an empty string so the scanner treats it as auto/infer
+        # rather than forcing one of the explicit platform values.
+        hosted = self.var_hosted.get()
+        if hosted == HOSTED_AUTO:
+            hosted = ""
         return FormInputs(
             problem_experienced=self.var_problem.get(),
             other_problem=self.var_other.get().strip(),
-            hosted_platform=self.var_hosted.get(),
+            hosted_platform=hosted,
             gateway_ip=self.var_gw.get().strip(),
             firewall_ip=self.var_fw.get().strip(),
             starbox_ip=self.var_sb.get().strip(),

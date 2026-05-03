@@ -220,8 +220,18 @@ def _attribution_section(report: ScanReport) -> Section:
         bullets.append(a.rationale)
     if a.user_provided_gateway_ip:
         bullets.append(f"User-provided gateway: {a.user_provided_gateway_ip}")
+    elif a.auto_detected_gateway_ip:
+        bullets.append(
+            f"Auto-detected gateway: {a.auto_detected_gateway_ip} "
+            "(Advanced field was left blank)"
+        )
     if a.user_provided_firewall_ip:
         bullets.append(f"User-provided firewall: {a.user_provided_firewall_ip}")
+    else:
+        bullets.append(
+            "Firewall IP: not specified — not assumed equal to gateway. "
+            "In-path culprit reported as 'gateway-or-firewall' where applicable."
+        )
     if a.user_provided_starbox_ip:
         bullets.append(f"User-provided Starbox: {a.user_provided_starbox_ip}")
     return Section(
@@ -293,6 +303,42 @@ def _summary_section(report: ScanReport) -> Section:
     )
 
 
+def _inputs_section(report: ScanReport) -> Section:
+    """Show what was manually provided vs auto-detected vs skipped.
+
+    Lets the operator (and the future VPS upload) see at a glance which
+    Advanced fields were typed in versus inferred at scan time.
+    """
+    r = report.resolved_inputs
+    bullets: list[str] = []
+    if r.manual_inputs:
+        bullets.append("Manual inputs:")
+        for k, v in r.manual_inputs.items():
+            bullets.append(f"   • {k} = {v}")
+    else:
+        bullets.append("Manual inputs: none — Advanced was left blank.")
+    if r.auto_detected:
+        bullets.append("Auto-detected:")
+        for k, v in r.auto_detected.items():
+            bullets.append(f"   • {k} = {v}")
+    if r.skipped:
+        bullets.append("Skipped cleanly: " + ", ".join(r.skipped))
+    for note in r.notes:
+        bullets.append(f"Note: {note}")
+    if not bullets:
+        bullets = ["No inputs recorded."]
+    return Section(
+        key="net",
+        title="Inputs (manual vs auto-detected)",
+        status="INFO",
+        summary=(
+            "All Advanced fields are optional — blank values are auto-detected "
+            "or skipped cleanly without producing fake evidence."
+        ),
+        bullets=bullets,
+    )
+
+
 def build_sections(report: ScanReport) -> list[Section]:
     """Top-down, ordered for the GUI."""
     return [
@@ -302,6 +348,7 @@ def build_sections(report: ScanReport) -> list[Section]:
         _vlan_section(report),
         _attribution_section(report),
         _network_section(report),
+        _inputs_section(report),
         _capture_section(report),
     ]
 

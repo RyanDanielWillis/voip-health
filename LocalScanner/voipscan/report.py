@@ -139,6 +139,7 @@ class DeviceAttribution:
     user_provided_gateway_ip: str = ""
     user_provided_firewall_ip: str = ""
     user_provided_starbox_ip: str = ""
+    auto_detected_gateway_ip: str = ""
 
 
 @dataclass
@@ -154,13 +155,36 @@ class Issue:
 
 @dataclass
 class FormInputs:
+    """Raw values typed by the operator. All fields are optional.
+
+    Empty string means "not specified — the scanner should auto-detect or
+    skip the related check cleanly". The scanner never invents a fake
+    target or flags a blank field as an error.
+    """
+
     problem_experienced: str = ""
     other_problem: str = ""
-    hosted_platform: str = ""
-    gateway_ip: str = ""
-    firewall_ip: str = ""
-    starbox_ip: str = ""
-    sip_test_endpoint: str = ""  # future: configurable SIP echo/test target
+    hosted_platform: str = ""  # blank == auto / unknown
+    gateway_ip: str = ""        # blank == auto-detect from OS routes
+    firewall_ip: str = ""       # blank == do NOT assume; treat path as gateway-or-firewall
+    starbox_ip: str = ""        # blank == skip Starbox-specific checks cleanly
+    sip_test_endpoint: str = ""  # blank == skip external SIP probes; ALG verdict limited
+
+
+@dataclass
+class ResolvedInputs:
+    """What the scanner actually used for each input after auto-detection.
+
+    Mirrors ``FormInputs`` but separates user-provided values from values
+    we auto-detected at scan time. The future VPS upload uses this to
+    know which fields were specified versus inferred so the dashboard
+    can weight them differently.
+    """
+
+    manual_inputs: dict[str, str] = field(default_factory=dict)
+    auto_detected: dict[str, str] = field(default_factory=dict)
+    skipped: list[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -176,6 +200,7 @@ class ScanReport:
     duration_seconds: float = 0.0
 
     form: FormInputs = field(default_factory=FormInputs)
+    resolved_inputs: ResolvedInputs = field(default_factory=ResolvedInputs)
     host: HostIdentity = field(default_factory=HostIdentity)
     interfaces: list[NetworkInterface] = field(default_factory=list)
     gateway: GatewayInfo = field(default_factory=GatewayInfo)
