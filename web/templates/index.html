@@ -4,13 +4,22 @@
 
 {% block content %}
 <div class="container">
-    <h1 class="page-title">
-        <img class="page-title-logo"
-             src="{{ url_for('static', filename='logo2.png') }}"
-             alt=""
-             aria-hidden="true">
-        <span>Angry VoIP Scanner 🚨</span>
-    </h1>
+    <div class="page-header">
+        <h1 class="page-title">
+            <img class="page-title-logo"
+                 src="{{ url_for('static', filename='logo2.png') }}"
+                 alt=""
+                 aria-hidden="true">
+            <span>Angry VoIP Scanner 🚨</span>
+        </h1>
+        <div class="page-header-download">
+            <span class="download-copy">Download the desktop client for Windows:</span>
+            <a class="cta-button download-button"
+               href="https://github.com/RyanDanielWillis/angry-voip-scanner/raw/main/LocalScanner/VoipScanner_Desktop.zip"
+               download
+               rel="noopener">Download</a>
+        </div>
+    </div>
     <p><strong>The frustration ends here.</strong></p>
 
     <p>VoIP troubleshooting shouldn't feel like chasing ghosts. Built from real-world,
