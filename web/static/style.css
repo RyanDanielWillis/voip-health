@@ -145,36 +145,11 @@ a:hover {
     background: var(--surface-2);
 }
 
-/* Compact Download button when placed inside the nav menu */
-.nav-links .download-button,
-.nav-links .nav-download {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 32px;
-    padding: 6px 11px;
-    border-radius: 7px;
-    background: var(--accent);
-    color: #fff !important;
-    font-size: 0.9rem;
-    font-weight: 600;
-    line-height: 1.2;
-    white-space: nowrap;
-    box-shadow: none;
-}
-
-.nav-links .download-button:hover,
-.nav-links .nav-download:hover {
-    background: var(--accent-2);
-    color: #fff !important;
-    text-decoration: none;
-}
-
 .header-actions {
     margin-left: auto;
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
 }
 
 .icon-link {
@@ -206,6 +181,7 @@ a:hover {
     background: var(--surface-2);
     color: var(--text);
     border: 1px solid var(--border);
+    height: 30px;
     padding: 5px 10px;
     border-radius: 6px;
     font-size: 0.85rem;
@@ -275,20 +251,19 @@ h3 {
     display: block;
 }
 
-.page-header-download {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex-wrap: wrap;
-}
-
+/* Download button: shares .cta-button base (blue), sized to match the
+ * theme toggle so it sits cleanly with the GitHub link and toggle in
+ * .header-actions. */
 .download-button {
-    background: var(--accent);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 30px;
+    padding: 5px 10px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    line-height: 1.2;
     white-space: nowrap;
-}
-
-.download-button:hover {
-    background: var(--accent-2);
 }
 
 p {
@@ -554,13 +529,6 @@ label {
         font-size: 0.88rem;
     }
 
-    .nav-links .download-button,
-    .nav-links .nav-download {
-        min-height: 30px;
-        padding: 5px 9px;
-        font-size: 0.85rem;
-    }
-
     .icon-link-label {
         display: none;
     }
@@ -569,9 +537,15 @@ label {
         padding: 6px 8px;
     }
 
-    .toggle-btn {
+    .toggle-btn,
+    .download-button {
+        height: 29px;
         padding: 5px 8px;
         font-size: 0.82rem;
+    }
+
+    .header-actions {
+        gap: 6px;
     }
 
     .container {
@@ -594,89 +568,10 @@ label {
     .page-header {
         gap: 12px;
     }
-
-    .page-header-download {
-        width: 100%;
-        gap: 10px;
-    }
 }
 
 @media (max-width: 420px) {
     .nav-links a:not(.active) {
         padding: 5px 6px;
-    }
-
-    .nav-links .download-button,
-    .nav-links .nav-download {
-        padding: 5px 7px;
-        font-size: 0.82rem;
-    }
-}
-
-/* Final header Download button override */
-.site-header .header-actions .download-button,
-.site-header .header-actions .cta-button.download-button,
-.site-header .header-actions a.download-button,
-.site-header .header-actions a.cta-button.download-button {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    height: 30px;
-    min-height: 0;
-    padding: 5px 10px;
-    margin: 0;
-    border-radius: 6px;
-    background: var(--surface-2);
-    color: var(--text) !important;
-    border: 1px solid var(--border);
-    box-shadow: none;
-    font-size: 0.85rem;
-    font-weight: 500;
-    line-height: 1.2;
-    letter-spacing: 0;
-    white-space: nowrap;
-    text-decoration: none;
-}
-
-.site-header .header-actions .download-button:hover,
-.site-header .header-actions .cta-button.download-button:hover,
-.site-header .header-actions a.download-button:hover,
-.site-header .header-actions a.cta-button.download-button:hover {
-    background: var(--bg);
-    color: var(--text) !important;
-    border-color: var(--text-muted);
-    text-decoration: none;
-}
-
-/* Match action spacing: GitHub, theme toggle, Download */
-.site-header .header-actions {
-    gap: 8px;
-}
-
-/* Make the theme toggle and Download button visually match */
-.site-header .toggle-btn {
-    height: 30px;
-    min-height: 0;
-    padding: 5px 10px;
-}
-
-@media (max-width: 720px) {
-    .site-header .header-actions {
-        gap: 6px;
-    }
-
-    .site-header .header-actions .download-button,
-    .site-header .header-actions .cta-button.download-button,
-    .site-header .header-actions a.download-button,
-    .site-header .header-actions a.cta-button.download-button {
-        height: 29px;
-        padding: 5px 8px;
-        font-size: 0.82rem;
-    }
-
-    .site-header .toggle-btn {
-        height: 29px;
-        padding: 5px 8px;
-        font-size: 0.82rem;
     }
 }
