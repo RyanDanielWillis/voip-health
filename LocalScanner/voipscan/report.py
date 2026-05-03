@@ -130,6 +130,68 @@ class CaptureReadiness:
 
 
 @dataclass
+class LatencyTargetResult:
+    """One ping target's latency / jitter snapshot.
+
+    Mirrors :class:`voipscan.latency.LatencyResult` but lives in the
+    report module so the data shape is single-sourced for upload.
+    """
+
+    target_label: str = ""
+    target_host: str = ""
+    samples_sent: int = 0
+    samples_received: int = 0
+    packet_loss_pct: float = 0.0
+    rtt_min_ms: Optional[float] = None
+    rtt_avg_ms: Optional[float] = None
+    rtt_max_ms: Optional[float] = None
+    jitter_ms: Optional[float] = None
+    jitter_formula: str = "mean(|rtt[i] - rtt[i-1]|) over received samples"
+    confidence: str = "inconclusive"
+    status: str = "unknown"
+    notes: list[str] = field(default_factory=list)
+    raw_rtts_ms: list[float] = field(default_factory=list)
+
+
+@dataclass
+class LatencyEvidence:
+    """Aggregate latency / jitter / packet-loss findings."""
+
+    targets: list[LatencyTargetResult] = field(default_factory=list)
+    overall_status: str = "unknown"
+    overall_summary: str = ""
+    suggestions: list[str] = field(default_factory=list)
+
+
+@dataclass
+class DhcpAdapterRow:
+    adapter_name: str = ""
+    description: str = ""
+    dhcp_enabled: Optional[bool] = None
+    dhcp_server: str = ""
+    lease_obtained: str = ""
+    lease_expires: str = ""
+    ipv4: list[str] = field(default_factory=list)
+    default_gateway: str = ""
+    notes: list[str] = field(default_factory=list)
+
+
+@dataclass
+class DhcpEvidenceData:
+    """DHCP / IP-assignment evidence."""
+
+    available: bool = False
+    method: str = ""
+    adapters: list[DhcpAdapterRow] = field(default_factory=list)
+    inferred_assigner: str = "unknown"
+    inferred_assigner_ip: str = ""
+    confidence: str = "inconclusive"
+    explanation: str = ""
+    suggestions: list[str] = field(default_factory=list)
+    limitations: list[str] = field(default_factory=list)
+
+
+@dataclass
 class DeviceAttribution:
     """Where in the path is traffic likely being blocked / rewritten."""
 
@@ -211,6 +273,8 @@ class ScanReport:
     port_tests: list[PortTestResult] = field(default_factory=list)
     capture: CaptureReadiness = field(default_factory=CaptureReadiness)
     attribution: DeviceAttribution = field(default_factory=DeviceAttribution)
+    latency: LatencyEvidence = field(default_factory=LatencyEvidence)
+    dhcp: DhcpEvidenceData = field(default_factory=DhcpEvidenceData)
 
     issues: list[Issue] = field(default_factory=list)
     fixes: list[str] = field(default_factory=list)

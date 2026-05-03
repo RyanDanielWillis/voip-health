@@ -25,6 +25,47 @@ Scans your PBX/phone system for one-way audio, choppy calls, exposed extensions,
 Download the portable desktop client from https://voipscan.danielscience.com
 and see results at https://voipscan.danielscience.com/dashboard
 
+## Desktop client (Windows)
+
+![VoIP Health Check desktop client](client_gui.png)
+
+The desktop client is a portable Windows GUI titled **VoIP Health Check —
+Local network diagnostics for VoIP health**. The screenshot above shows the
+main window:
+
+- A red **Quick Scan** button and a neighbouring **Start Packet Capture**
+  button along the top action row, both sized and spaced to match — the
+  packet-capture flow now has a dedicated **Stop Packet Capture** button
+  beside Start so the operator can finalize a capture without relying on
+  a single toggle.
+- An **Optional** card with a *Problem Experienced* dropdown, a *Do you
+  have a different problem?* free-text field, an *Advanced* (collapsible)
+  panel where every field is optional and auto-detected when blank, and
+  a red **Scan Now** button.
+- A dark **Scan Results / Log** pane that streams diagnostic lines
+  during a scan and switches to a plain-English summary (with status
+  badges) when the scan finishes. The screenshot shows the idle state
+  with the app version banner, the local logs path, and the resolved
+  `nmap.exe` path.
+
+### Download the Windows client
+
+The portable Windows `.exe` is built and published by the GitHub Actions
+workflow on every push to `main` (and on demand via *Run workflow*). To
+get the latest build:
+
+1. Open the [**Build LocalScanner Windows EXE**](https://github.com/RyanDanielWillis/voip-health/actions/workflows/build-localscanner.yml)
+   workflow page.
+2. Click the most recent successful run.
+3. Under **Artifacts**, download
+   [`VoIPHealthCheck-windows-exe`](https://github.com/RyanDanielWillis/voip-health/actions/workflows/build-localscanner.yml)
+   (single `.exe`) or `VoIPHealthCheck-windows-package` (the `.exe`
+   alongside the bundled `nmap/` folder, recommended for full scanning).
+4. Unzip and run `VoIPHealthCheck.exe` — no installer required.
+
+The hosted homepage at https://voipscan.danielscience.com also surfaces
+the same screenshot, copy and download instructions for end users.
+
 ## Output:
 🔍 SCANNING 192.168.1.100...
 ❌ ONE-WAY AUDIO DETECTED

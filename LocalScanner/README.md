@@ -5,6 +5,26 @@ network diagnostics for VoIP troubleshooting. Built around Python's
 standard library + a bundled `nmap.exe` so it can run straight from a
 USB stick on locked-down customer machines without installation.
 
+> **Screenshot of the desktop client** is checked in at the repo root
+> as `client_gui.png` (also served by the Flask homepage at
+> `/static/client_gui.png`). The repo-root README and the homepage
+> describe what each control on the window does.
+
+## Download (Windows)
+
+The portable `VoIPHealthCheck.exe` is produced by GitHub Actions from
+[`build-localscanner.yml`](../.github/workflows/build-localscanner.yml).
+The latest exe is available as a workflow-run artifact:
+
+1. Open the **Build LocalScanner Windows EXE** workflow in GitHub
+   Actions.
+2. Pick the most recent successful run on `main`.
+3. Download `VoIPHealthCheck-windows-exe` (just the exe) or
+   `VoIPHealthCheck-windows-package` (exe + bundled `nmap/`).
+
+A direct `.exe` is **not** committed to the repo on purpose — the build
+workflow is the source of truth so the binary always tracks the source.
+
 ```
 LocalScanner/
 ├── voipscan/                 # GUI + scan engine (modular, easy to edit)
@@ -47,8 +67,55 @@ LocalScanner/
 | VLAN 41 | `Get-NetAdapter` VLAN ID, NIC advanced VLAN registry hint, IPv4 subnet hint (`10.41.x.x` / `192.168.41.x`), operator gateway hint | Confirmed / Likely / Inconclusive |
 | SIP ALG | SIP OPTIONS over UDP and TCP to a configured test endpoint (Via/Contact rewrite check), public-vs-private IP context, Windows local services (negative evidence), gateway-vendor prior (SonicWall / FortiGate / Cisco / etc.) | Strong / Likely / Inconclusive |
 | Sangoma port reachability | Every rule in the published port guide. Big ranges (RTP 10000-65000, Mobile 10000-40000, etc.) are **sampled** — see `sangoma_ports.py`. | Confirmed (TCP), Inconclusive (UDP without reply) |
+| **Latency / jitter / packet loss** | ICMP ping (8 samples, 1.5 s timeout) to gateway, two public anchors (`8.8.8.8`, `1.1.1.1`) and a Sangoma representative host. Computes min / avg / max RTT, packet loss, and **jitter = mean(\|rtt[i] − rtt[i−1]\|)** over received samples. | Strong (when replies arrive), Likely / Inconclusive otherwise |
+| **DHCP / IP-assignment evidence** | Parses `ipconfig /all` (Windows) or `nmcli`/`ip` (Linux) for per-adapter DHCP-enabled flag, DHCP server IP, lease times, IPv4 and gateway. Infers whether the gateway, a dedicated DHCP server, or a static config is assigning the IP. | Strong / Likely / Inconclusive |
 | Device attribution | Combines port test results, gateway vendor and operator-supplied IPs to point at *local-firewall / gateway / firewall / ISP / remote* | Likely / Inconclusive |
 | Packet capture | Live capture from the GUI using Wireshark `dumpcap` (preferred) or built-in Windows `pktmon` (fallback). Output saved to `captures/` as `.pcapng` (or `.etl`/`.txt` for older pktmon). | n/a |
+
+### Latency / jitter / packet loss (`voipscan/latency.py`)
+
+The latency module is intentionally limited to the system `ping` binary
+so it works without admin rights and on locked-down customer machines:
+
+* **Targets** — the operator-supplied or auto-detected default gateway,
+  two stable public anchors (`8.8.8.8`, `1.1.1.1`), and a Sangoma
+  representative host (`sangoma_ports.DEFAULT_SANGOMA_HOST`, or the
+  Starbox IP if the operator provided one).
+* **Stats** — per-target `samples_sent`, `samples_received`,
+  `packet_loss_pct`, `rtt_min_ms`, `rtt_avg_ms`, `rtt_max_ms`, and
+  `jitter_ms`.
+* **Jitter formula** — mean of the absolute differences between
+  consecutive RTT samples (`mean(|rtt[i] - rtt[i-1]|)`). This is the
+  classic VoIP / RFC 3550-style "interarrival jitter" approximation
+  available from RTT timelines.
+* **VoIP thresholds** — declared as constants at the top of
+  `latency.py` (`RTT_GOOD_MS`, `JITTER_WARN_MS`, `LOSS_WARN_PCT`, …)
+  so they're easy to tune.
+
+Each target row is stored on `ScanReport.latency.targets` so the
+structured JSON is upload-ready. Ping output parsing is exposed via
+`parse_ping_output()` and `compute_jitter()` for unit testing without a
+live network.
+
+### DHCP / IP-assignment evidence (`voipscan/dhcp.py`)
+
+* On Windows the module reads `ipconfig /all` and parses each adapter
+  block for `DHCP Enabled`, `DHCP Server`, `Lease Obtained`, `Lease
+  Expires`, `IPv4 Address`, and `Default Gateway`.
+* On Linux it falls back to `nmcli device show` / `ip addr` and surfaces
+  whatever it can find (best-effort).
+* `infer_assigner()` then picks one of:
+  * `router/firewall (gateway acts as DHCP server)` — strong confidence
+    when the DHCP server IP equals the default gateway.
+  * `dedicated DHCP server (not the gateway)` — likely confidence
+    otherwise.
+  * `static (no DHCP)` — strong confidence when DHCP is disabled.
+  * `dhcp (server unknown)` — inconclusive when DHCP is enabled but no
+    server has been seen.
+* The report records an `inferred_assigner`, `inferred_assigner_ip`,
+  `confidence`, `explanation` and a list of `limitations` (notably:
+  *ipconfig only sees the current lease — rogue DHCP servers on the
+  same broadcast domain are not detected without a passive capture*).
 
 ### Honest limits
 
@@ -90,11 +157,13 @@ provided values apart from inferred ones.
 
 ## Packet capture
 
-The **Start Packet Capture** button records VoIP-relevant traffic to a
-file you can open in Wireshark. Click it once to start; click again
-(the button reads **Stop Packet Capture**) to stop and finalize the
-file. Captures are written to a `captures/` folder next to the
-executable with timestamped filenames.
+There are now **two dedicated buttons** — **Start Packet Capture** and
+**Stop Packet Capture** — sitting side-by-side on the primary action
+row with equal sizing and spacing. Start enables only when no capture
+is running; Stop enables only while a capture is in progress, so the
+operator can never get confused about whether a session is live.
+Captures are written to a `captures/` folder next to the executable
+with timestamped filenames.
 
 The app picks an engine in this order:
 

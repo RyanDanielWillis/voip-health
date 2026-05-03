@@ -294,6 +294,96 @@ ul {
     text-decoration: none;
 }
 
+/* ===== Client showcase (homepage screenshot box) ===== */
+/* Two-column layout: left column gets the existing intro copy, right
+ * column shows the desktop-client screenshot in a stylized box. The
+ * layout collapses to a single column on narrow screens.
+ */
+.intro-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 360px);
+    gap: 24px;
+    align-items: start;
+    margin-bottom: 12px;
+}
+
+.intro-text {
+    min-width: 0;
+}
+
+.client-showcase {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px;
+    box-shadow: var(--shadow);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    position: sticky;
+    top: 76px;
+}
+
+.client-showcase h3 {
+    margin: 0;
+    color: var(--accent);
+    font-size: 1.05rem;
+}
+
+.client-showcase img {
+    width: 100%;
+    height: auto;
+    display: block;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: #0f1115;
+}
+
+.client-showcase p {
+    margin: 0;
+    font-size: 0.92rem;
+    color: var(--text);
+}
+
+.client-showcase ul {
+    margin: 0;
+    padding-left: 18px;
+    font-size: 0.88rem;
+    color: var(--text-muted);
+}
+
+.client-showcase ul li {
+    margin-bottom: 2px;
+}
+
+.client-showcase .download-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 4px;
+}
+
+.client-showcase .download-row .cta-button {
+    padding: 8px 14px;
+    font-size: 0.9rem;
+}
+
+.client-showcase .secondary-link {
+    align-self: flex-start;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+@media (max-width: 880px) {
+    .intro-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .client-showcase {
+        position: static;
+    }
+}
+
 /* ===== Cards / structured scan results ===== */
 .cards {
     display: grid;

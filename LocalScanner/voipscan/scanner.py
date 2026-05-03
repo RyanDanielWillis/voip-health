@@ -25,13 +25,19 @@ from pathlib import Path
 from typing import Callable, Iterable
 
 from . import capture as capture_mod
+from . import dhcp as dhcp_mod
+from . import latency as latency_mod
 from . import netinfo, paths, porttests, sangoma_ports, sipalg, vlan
 from .logger import get_logger, log_exception
 from .report import (
     CaptureReadiness,
     DeviceAttribution,
+    DhcpAdapterRow,
+    DhcpEvidenceData,
     FormInputs,
     Issue,
+    LatencyEvidence,
+    LatencyTargetResult,
     ResolvedInputs,
     ScanReport,
     SipAlgEvidence,
@@ -475,7 +481,57 @@ def _summarize_issues(report: ScanReport) -> tuple[list[Issue], list[str]]:
             ),
         ))
 
-    if not issues:
+    # Latency / jitter / packet loss
+    if report.latency.targets:
+        if report.latency.overall_status == "bad":
+            issues.append(Issue(
+                code="latency_bad",
+                title="Latency, jitter or packet loss outside VoIP comfort range",
+                severity="critical",
+                confidence="strong",
+                detail=report.latency.overall_summary,
+                suggested_fix="; ".join(report.latency.suggestions)
+                    or "Reduce contention on the WAN link and enable QoS for SIP/RTP.",
+            ))
+            for s in report.latency.suggestions:
+                if s not in fixes:
+                    fixes.append(s)
+        elif report.latency.overall_status == "warn":
+            issues.append(Issue(
+                code="latency_warn",
+                title="Latency / jitter borderline for VoIP",
+                severity="warning",
+                confidence="likely",
+                detail=report.latency.overall_summary,
+                suggested_fix="; ".join(report.latency.suggestions)
+                    or "Investigate WAN path and QoS configuration.",
+            ))
+
+    # DHCP / IP assignment
+    if report.dhcp.available and report.dhcp.inferred_assigner != "unknown":
+        # This is informational — the operator usually wants to know the
+        # answer regardless of severity. Include it as an info issue so
+        # the summary view always shows the inferred assigner.
+        issues.append(Issue(
+            code="dhcp_assigner",
+            title=f"IP assigned by: {report.dhcp.inferred_assigner}",
+            severity="info",
+            confidence=report.dhcp.confidence,
+            detail=report.dhcp.explanation,
+            suggested_fix="; ".join(report.dhcp.suggestions),
+        ))
+    elif not report.dhcp.available:
+        issues.append(Issue(
+            code="dhcp_unknown",
+            title="DHCP / IP-assignment evidence unavailable",
+            severity="info",
+            confidence="inconclusive",
+            detail=report.dhcp.explanation
+                or "ipconfig output could not be parsed.",
+            suggested_fix="",
+        ))
+
+    if not [i for i in issues if i.severity in ("critical", "warning")]:
         issues.append(Issue(
             code="all_clear",
             title="No major issues detected",
@@ -700,6 +756,46 @@ def run_evidence_scan(
         )
     except Exception:
         log_exception("capture detection failed")
+
+    # 7b. Latency / jitter / packet loss (ICMP ping)
+    on_log("[scan] Measuring latency, jitter and packet loss...")
+    try:
+        gw_for_ping = (form.gateway_ip or report.gateway.default_gateway or "").strip()
+        sangoma_host = (form.starbox_ip or sangoma_ports.DEFAULT_SANGOMA_HOST).strip()
+        latency_summary = latency_mod.run_latency_tests(
+            gateway=gw_for_ping,
+            sangoma_host=sangoma_host,
+            on_log=on_log,
+        )
+        report.latency = LatencyEvidence(
+            targets=[
+                LatencyTargetResult(**t.to_dict())
+                for t in latency_summary.targets
+            ],
+            overall_status=latency_summary.overall_status,
+            overall_summary=latency_summary.overall_summary,
+            suggestions=list(latency_summary.suggestions),
+        )
+    except Exception:
+        log_exception("latency tests failed")
+
+    # 7c. DHCP / IP-assignment evidence
+    on_log("[scan] Collecting DHCP / IP-assignment evidence...")
+    try:
+        dhcp_ev = dhcp_mod.collect_dhcp_evidence(on_log=on_log)
+        report.dhcp = DhcpEvidenceData(
+            available=dhcp_ev.available,
+            method=dhcp_ev.method,
+            adapters=[DhcpAdapterRow(**a.to_dict()) for a in dhcp_ev.adapters],
+            inferred_assigner=dhcp_ev.inferred_assigner,
+            inferred_assigner_ip=dhcp_ev.inferred_assigner_ip,
+            confidence=dhcp_ev.confidence,
+            explanation=dhcp_ev.explanation,
+            suggestions=list(dhcp_ev.suggestions),
+            limitations=list(dhcp_ev.limitations),
+        )
+    except Exception:
+        log_exception("DHCP evidence collection failed")
 
     # 8. Device attribution
     try:

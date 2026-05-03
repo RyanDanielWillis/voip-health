@@ -13,26 +13,52 @@
             <span>VoIP Health Check 🚨</span>
         </h1>
     </div>
-    <p><strong>The frustration ends here.</strong></p>
+    <div class="intro-grid">
+        <div class="intro-text">
+            <p><strong>The frustration ends here.</strong></p>
 
-    <p>VoIP troubleshooting shouldn't feel like chasing ghosts. Built from real-world,
-       late-night ticket pain, the <strong>VoIP Health Check</strong> cuts through the
-       noise of SIP headers and network latency to tell you exactly why your calls
-       are failing.</p>
+            <p>VoIP troubleshooting shouldn't feel like chasing ghosts. Built from real-world,
+               late-night ticket pain, the <strong>VoIP Health Check</strong> cuts through the
+               noise of SIP headers and network latency to tell you exactly why your calls
+               are failing.</p>
 
-    <h3>What it does</h3>
-    <ul>
-        <li><strong>Automated SIP diagnostics:</strong> scans remote PBX systems for security holes, misconfigurations, and connectivity blocks.</li>
-        <li><strong>Translates tech-speak:</strong> turns complex SIP errors into plain-English fixes. Stop guessing; start repairing.</li>
-        <li><strong>Network health check:</strong> identifies one-way audio sources, codec mismatches, and jitter issues in seconds.</li>
-    </ul>
+            <h3>What it does</h3>
+            <ul>
+                <li><strong>Automated SIP diagnostics:</strong> scans remote PBX systems for security holes, misconfigurations, and connectivity blocks.</li>
+                <li><strong>Translates tech-speak:</strong> turns complex SIP errors into plain-English fixes. Stop guessing; start repairing.</li>
+                <li><strong>Network health check:</strong> identifies one-way audio sources, codec mismatches, and jitter issues in seconds.</li>
+            </ul>
 
-    <p>Tired of losing hours to ghost calls and unreachable extensions? Get the diagnostic
-       intelligence you need to reclaim your network.</p>
+            <p>Tired of losing hours to ghost calls and unreachable extensions? Get the diagnostic
+               intelligence you need to reclaim your network.</p>
 
-    <p style="margin-top: 18px;">
-        <a href="{{ url_for('dashboard') }}" class="cta-button">Access live scan dashboard</a>
-    </p>
+            <p style="margin-top: 18px;">
+                <a href="{{ url_for('dashboard') }}" class="cta-button">Access live scan dashboard</a>
+            </p>
+        </div>
+
+        <aside class="client-showcase" aria-label="Desktop client preview">
+            <h3>Desktop client for Windows</h3>
+            <img src="{{ url_for('static', filename='client_gui.png') }}"
+                 alt="Screenshot of the VoIP Health Check desktop client showing Quick Scan, Start Packet Capture, an Optional panel with Problem Experienced and Advanced fields, a Scan Now button, and a Scan Results / Log pane.">
+            <p>Portable Windows GUI — runs from a USB stick, no installer.
+               One click for an evidence-focused scan; another click for a
+               packet capture you can hand to Wireshark.</p>
+            <ul>
+                <li>Quick Scan + dedicated Start / Stop Packet Capture controls</li>
+                <li>Latency, jitter and DHCP / IP-assignment evidence</li>
+                <li>Plain-English summary with suggested fixes</li>
+            </ul>
+            <div class="download-row">
+                <a class="cta-button"
+                   href="https://github.com/RyanDanielWillis/voip-health/actions/workflows/build-localscanner.yml"
+                   target="_blank" rel="noopener">Download Windows client</a>
+            </div>
+            <a class="secondary-link"
+               href="https://github.com/RyanDanielWillis/voip-health/blob/main/LocalScanner/README.md"
+               target="_blank" rel="noopener">LocalScanner build &amp; run notes →</a>
+        </aside>
+    </div>
 
     <h2 style="margin-top: 28px;">Recent scan results</h2>
     {% if recent_audits and recent_audits|length > 0 %}

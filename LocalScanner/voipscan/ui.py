@@ -70,6 +70,8 @@ ICONS = {
     "attribution": "A",
     "net": "N",
     "capture": "C",
+    "latency": "L",
+    "dhcp": "D",
 }
 
 PROBLEM_OPTIONS = [
@@ -277,11 +279,14 @@ class VoipScanApp:
         row = ttk.Frame(self.root, style="TFrame")
         row.pack(fill="x", padx=18, pady=(4, 12))
 
+        # All buttons on this row share equal sizing and spacing so the
+        # layout stays balanced even as labels change ("Start" vs "Stop").
         self.btn_quick = ttk.Button(
             row,
             text="Run Evidence Scan",
             style="Primary.TButton",
             command=self._on_evidence_scan,
+            width=22,
         )
         self.btn_quick.pack(side="left", padx=(0, 10))
 
@@ -289,9 +294,20 @@ class VoipScanApp:
             row,
             text="Start Packet Capture",
             style="Secondary.TButton",
-            command=self._on_packet_capture,
+            command=self._start_packet_capture,
+            width=22,
         )
-        self.btn_capture.pack(side="left")
+        self.btn_capture.pack(side="left", padx=(0, 10))
+
+        self.btn_capture_stop = ttk.Button(
+            row,
+            text="Stop Packet Capture",
+            style="Secondary.TButton",
+            command=self._stop_packet_capture,
+            width=22,
+            state="disabled",
+        )
+        self.btn_capture_stop.pack(side="left")
 
     # -- Optional section -------------------------------------------------
     def _build_optional_section(self) -> None:
@@ -603,16 +619,17 @@ class VoipScanApp:
     def _on_scan_now(self) -> None:
         self._run_evidence(self._collect_form())
 
-    def _on_packet_capture(self) -> None:
-        # The button toggles between Start / Stop. We keep one session at a
-        # time; the heavy lifting lives in voipscan.capture.
-        session = self._capture_session
-        if session is not None and session.is_running:
-            self._stop_packet_capture()
-            return
-        self._start_packet_capture()
+    def _set_capture_buttons(self, running: bool) -> None:
+        """Toggle Start/Stop button enabled-state based on capture status."""
+        self.btn_capture.configure(state=("disabled" if running else "normal"))
+        self.btn_capture_stop.configure(state=("normal" if running else "disabled"))
 
     def _start_packet_capture(self) -> None:
+        # Guard against double-clicks while a session is already running.
+        session = self._capture_session
+        if session is not None and session.is_running:
+            self._enqueue("[capture] A capture is already running — Stop it first.")
+            return
         try:
             session = capture.CaptureSession(on_log=self._enqueue)
             status = session.start()
@@ -632,12 +649,14 @@ class VoipScanApp:
             return
         self._capture_session = session
         self._enqueue(f"[capture] Engine: {status.engine}. {status.detail}")
-        self.btn_capture.configure(text="Stop Packet Capture")
+        self._set_capture_buttons(running=True)
         self.lbl_status.configure(text=f"Capturing packets ({status.engine})...")
 
     def _stop_packet_capture(self) -> None:
         session = self._capture_session
         if session is None:
+            self._enqueue("[capture] No capture is currently running.")
+            self._set_capture_buttons(running=False)
             return
         try:
             result = session.stop()
@@ -645,7 +664,7 @@ class VoipScanApp:
             log_exception("Packet capture stop failed")
             self._enqueue(f"[capture] Stop error: {e}")
             result = None
-        self.btn_capture.configure(text="Start Packet Capture")
+        self._set_capture_buttons(running=False)
         self.lbl_status.configure(text="Idle.")
         self._capture_session = None
         if result is None:

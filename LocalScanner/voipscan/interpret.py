@@ -243,6 +243,116 @@ def _attribution_section(report: ScanReport) -> Section:
     )
 
 
+def _latency_section(report: ScanReport) -> Section:
+    lat = report.latency
+    if not lat.targets:
+        return Section(
+            key="latency",
+            title="Latency, Jitter & Packet Loss",
+            status="UNK",
+            summary=lat.overall_summary
+                or "Latency probe did not run (no usable targets).",
+        )
+
+    status_map = {"ok": "OK", "warn": "WARN", "bad": "BAD", "unknown": "UNK"}
+    status = status_map.get(lat.overall_status, "UNK")
+    bullets: list[str] = []
+    for t in lat.targets:
+        if t.samples_received:
+            bullets.append(
+                f"• {t.target_label} {t.target_host}: "
+                f"avg {t.rtt_avg_ms} ms, min {t.rtt_min_ms} ms, "
+                f"max {t.rtt_max_ms} ms, jitter {t.jitter_ms} ms, "
+                f"loss {t.packet_loss_pct}% "
+                f"({t.samples_received}/{t.samples_sent} replies) "
+                f"[{t.status}]"
+            )
+        elif t.status == "skipped":
+            bullets.append(f"• {t.target_label}: skipped — no host configured")
+        else:
+            bullets.append(
+                f"• {t.target_label} {t.target_host}: no replies "
+                f"({t.samples_sent} pings) [{t.status}]"
+            )
+        for note in t.notes:
+            bullets.append(f"    note: {note}")
+    if lat.targets:
+        bullets.append(
+            "Jitter formula: "
+            + (lat.targets[0].jitter_formula or "mean(|rtt[i] - rtt[i-1]|)")
+        )
+    return Section(
+        key="latency",
+        title="Latency, Jitter & Packet Loss",
+        status=status,
+        summary=lat.overall_summary or "Latency snapshot collected.",
+        bullets=bullets,
+        fixes=list(lat.suggestions),
+    )
+
+
+def _dhcp_section(report: ScanReport) -> Section:
+    d = report.dhcp
+    if not d.available:
+        return Section(
+            key="dhcp",
+            title="DHCP / IP Assignment",
+            status="UNK",
+            summary="DHCP evidence not available on this host.",
+            bullets=[d.explanation] if d.explanation else [],
+            fixes=list(d.suggestions),
+        )
+
+    if d.confidence in ("strong", "confirmed"):
+        status = "OK" if d.inferred_assigner != "unknown" else "INFO"
+    elif d.confidence == "likely":
+        status = "INFO"
+    else:
+        status = "UNK"
+
+    bullets: list[str] = [
+        f"Inferred assigner: {d.inferred_assigner}"
+        + (f" ({d.inferred_assigner_ip})" if d.inferred_assigner_ip else ""),
+        f"Confidence: {_confidence_label(d.confidence)}",
+        f"Method: {d.method or 'unknown'}",
+    ]
+    if d.explanation:
+        bullets.append(d.explanation)
+    for a in d.adapters[:6]:
+        bits = [f"adapter: {a.adapter_name or '?'}"]
+        if a.description:
+            bits.append(f"desc={a.description}")
+        if a.dhcp_enabled is not None:
+            bits.append(f"dhcp={'on' if a.dhcp_enabled else 'off'}")
+        if a.dhcp_server:
+            bits.append(f"server={a.dhcp_server}")
+        if a.ipv4:
+            bits.append(f"ipv4={','.join(a.ipv4)}")
+        if a.default_gateway:
+            bits.append(f"gw={a.default_gateway}")
+        if a.lease_obtained:
+            bits.append(f"lease_obtained={a.lease_obtained}")
+        if a.lease_expires:
+            bits.append(f"lease_expires={a.lease_expires}")
+        bullets.append("• " + ", ".join(bits))
+    if len(d.adapters) > 6:
+        bullets.append(f"...and {len(d.adapters) - 6} more adapter(s)")
+    for limit in d.limitations:
+        bullets.append(f"Limitation: {limit}")
+    return Section(
+        key="dhcp",
+        title="DHCP / IP Assignment",
+        status=status,
+        summary=(
+            f"IP appears to be assigned by: {d.inferred_assigner}"
+            if d.inferred_assigner != "unknown"
+            else "IP assignment source could not be inferred."
+        ),
+        bullets=bullets,
+        fixes=list(d.suggestions),
+    )
+
+
 def _capture_section(report: ScanReport) -> Section:
     if report.capture.available:
         status, summary = "OK", "Packet capture engine is ready."
@@ -345,6 +455,8 @@ def build_sections(report: ScanReport) -> list[Section]:
         _summary_section(report),
         _sipalg_section(report),
         _ports_section(report),
+        _latency_section(report),
+        _dhcp_section(report),
         _vlan_section(report),
         _attribution_section(report),
         _network_section(report),
