@@ -190,10 +190,10 @@ h1 { color: var(--accent); font-size: 1.8rem; }
 h2 { font-size: 1.3rem; }
 h3 { font-size: 1.1rem; }
 
-/* Page header: title lockup on the left, download CTA on the right. */
+/* Page header: title lockup on the left, download CTA pinned top-right. */
 .page-header {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: space-between;
     gap: 18px;
     flex-wrap: wrap;
@@ -221,11 +221,6 @@ h3 { font-size: 1.1rem; }
     align-items: center;
     gap: 12px;
     flex-wrap: wrap;
-}
-.download-copy {
-    color: var(--text-muted);
-    font-size: 0.95rem;
-    line-height: 1.3;
 }
 .download-button {
     background: var(--accent);
@@ -403,7 +398,6 @@ label { display: block; font-size: 0.9rem; color: var(--text-muted); margin-bott
         width: 100%;
         gap: 10px;
     }
-    .download-copy { font-size: 0.9rem; }
 }
 
 @media (max-width: 420px) {
