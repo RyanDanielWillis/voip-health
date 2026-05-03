@@ -275,7 +275,99 @@ def _row_ips(report_json: str | None) -> tuple[str, str]:
     return starbox, firewall
 
 
-def _quick_view(report_json: str | None, ports: list[dict]) -> dict:
+# Rating thresholds for latency / jitter / loss. Kept aligned with
+# ``LocalScanner/voipscan/latency.py`` (RTT_WARN_MS=150, JITTER_WARN_MS=30,
+# LOSS_WARN_PCT=3); "bad" is roughly 2x warn, the same shape the local
+# scanner uses to escalate per-target status.
+_RTT_WARN_MS = 150.0
+_RTT_BAD_MS = 300.0
+_JITTER_WARN_MS = 30.0
+_JITTER_BAD_MS = 60.0
+_LOSS_WARN_PCT = 3.0
+_LOSS_BAD_PCT = 8.0
+
+
+def _rate(value: float | None, warn: float, bad: float) -> str:
+    """Bucket a numeric measurement into ok / warn / bad / unknown."""
+    if value is None:
+        return "unknown"
+    if value >= bad:
+        return "bad"
+    if value >= warn:
+        return "warn"
+    return "ok"
+
+
+def _worst_rating(*ratings: str) -> str:
+    order = {"unknown": 0, "ok": 1, "warn": 2, "bad": 3}
+    worst = max(ratings, key=lambda r: order.get(r, 0), default="unknown")
+    return worst
+
+
+def _derive_issues_and_fixes(quick: dict) -> tuple[list[str], list[str]]:
+    """Build short non-technical 'top issues' and 'potential fixes' lines
+    from already-parsed quick-view data. Capped to keep the card scannable.
+    """
+    issues: list[str] = []
+    fixes: list[str] = []
+
+    if quick.get("sip_alg_overall") == "likely_on":
+        issues.append("SIP ALG looks enabled on the firewall/router")
+        fixes.append("Disable SIP ALG on the firewall and router, then reboot the phone")
+
+    blocked = quick.get("blocked_ports") or []
+    if blocked:
+        labels = ", ".join(b["label"] for b in blocked[:4])
+        more = "" if len(blocked) <= 4 else f" (+{len(blocked) - 4} more)"
+        issues.append(f"{len(blocked)} VoIP port(s) blocked: {labels}{more}")
+        fixes.append(
+            "Open the listed ports outbound to the SBC on the firewall and any upstream device"
+        )
+
+    lat_rating = quick.get("latency_rating") or quick.get("latency_status")
+    jit_rating = quick.get("jitter_rating")
+    if lat_rating in ("warn", "bad"):
+        issues.append(f"Latency rating: {lat_rating}")
+        fixes.append("Check ISP/WAN health and any in-path firewall doing deep inspection on voice")
+    if jit_rating in ("warn", "bad"):
+        issues.append(f"Jitter rating: {jit_rating}")
+        fixes.append("Enable QoS for SIP/RTP and avoid Wi-Fi or mesh hops between phone and firewall")
+    if quick.get("loss_rating") in ("warn", "bad"):
+        issues.append("Packet loss above VoIP comfort threshold")
+        fixes.append("Investigate the WAN link and ISP throughput for the affected target(s)")
+
+    vlan_status = (quick.get("vlan_status") or "").lower()
+    vlan_id = quick.get("vlan_id")
+    if vlan_status in ("not_detected", "missing", "absent") or (
+        vlan_status and vlan_status not in ("detected", "ok") and not vlan_id
+    ):
+        issues.append("Voice VLAN not detected on this port")
+        fixes.append("Confirm VLAN 41 (or your voice VLAN) is tagged on the switch port")
+
+    if not quick.get("gateway_ip"):
+        issues.append("No default gateway detected")
+        fixes.append("Verify the PC has a working DHCP lease and a reachable default gateway")
+    if not quick.get("firewall_ip"):
+        issues.append("Firewall IP not provided")
+        fixes.append("Add the firewall IP in the scan form so blame can be attributed correctly")
+    if not quick.get("starbox_ip"):
+        issues.append("Starbox IP not provided")
+        fixes.append("Add the Sangoma Starbox IP in the scan form for end-to-end checks")
+
+    dhcp_assigner = (quick.get("dhcp_assigner") or "").lower()
+    if dhcp_assigner and dhcp_assigner not in ("router", "firewall", "starbox", "dhcp_server"):
+        issues.append(f"DHCP assigner unclear ({quick.get('dhcp_assigner')})")
+        fixes.append("Confirm which device is handing out DHCP — a rogue server can break voice")
+
+    if quick.get("pcap_unavailable"):
+        issues.append("Packet capture unavailable on this run")
+        fixes.append("Re-run the scanner as Administrator so it can capture packets for analysis")
+
+    # Keep the surface area small — the user asked for 3-5 simple items.
+    return issues[:5], fixes[:5]
+
+
+def _quick_view(report_json: str | None, ports: list[dict], latency: list[dict] | None = None) -> dict:
     """Compact troubleshooting fields parsed from the stored ScanReport JSON.
 
     Falls back to empty values when the report is missing or malformed; the
@@ -323,11 +415,48 @@ def _quick_view(report_json: str | None, ports: list[dict]) -> dict:
             open_ports.append(label)
 
     sip_alg = _safe_dict(report.get("sip_alg"))
-    latency = _safe_dict(report.get("latency"))
+    latency_block = _safe_dict(report.get("latency"))
     dhcp = _safe_dict(report.get("dhcp"))
     vlan = _safe_dict(report.get("vlan"))
+    capture = _safe_dict(report.get("capture") or report.get("pcap"))
 
-    return {
+    # Worst-case latency / jitter / loss across measured targets, used to
+    # produce simple ratings even when the local scanner did not write an
+    # explicit overall_status.
+    worst_rtt = None
+    worst_jitter = None
+    worst_loss = None
+    for t in latency or []:
+        rtt = t.get("rtt_avg_ms")
+        jit = t.get("jitter_ms")
+        loss = t.get("packet_loss_pct")
+        if rtt is not None:
+            worst_rtt = rtt if worst_rtt is None else max(worst_rtt, rtt)
+        if jit is not None:
+            worst_jitter = jit if worst_jitter is None else max(worst_jitter, jit)
+        if loss is not None:
+            worst_loss = loss if worst_loss is None else max(worst_loss, loss)
+
+    rtt_rating = _rate(worst_rtt, _RTT_WARN_MS, _RTT_BAD_MS)
+    jitter_rating = _rate(worst_jitter, _JITTER_WARN_MS, _JITTER_BAD_MS)
+    loss_rating = _rate(worst_loss, _LOSS_WARN_PCT, _LOSS_BAD_PCT)
+
+    # Prefer the scanner's overall status when present; otherwise fall back
+    # to the rating derived from the worst-target RTT.
+    latency_status = latency_block.get("overall_status") or ""
+    latency_rating = (
+        latency_status if latency_status in ("ok", "warn", "bad")
+        else _worst_rating(rtt_rating, loss_rating)
+    )
+
+    pcap_unavailable = bool(
+        capture.get("unavailable")
+        or capture.get("error")
+        or (isinstance(capture.get("status"), str)
+            and capture["status"].lower() in ("unavailable", "missing", "error"))
+    )
+
+    quick = {
         "starbox_ip": starbox_ip,
         "firewall_ip": firewall_ip,
         "gateway_ip": gateway_ip,
@@ -337,8 +466,14 @@ def _quick_view(report_json: str | None, ports: list[dict]) -> dict:
         "sip_alg_summary": sip_alg.get("summary") or sip_alg.get("explanation") or "",
         "vlan_status": vlan.get("status") or "",
         "vlan_id": vlan.get("vlan_id") or "",
-        "latency_status": latency.get("overall_status") or "",
-        "latency_summary": latency.get("overall_summary") or "",
+        "latency_status": latency_status,
+        "latency_rating": latency_rating,
+        "latency_summary": latency_block.get("overall_summary") or "",
+        "jitter_rating": jitter_rating,
+        "loss_rating": loss_rating,
+        "worst_rtt_ms": round(worst_rtt, 1) if worst_rtt is not None else None,
+        "worst_jitter_ms": round(worst_jitter, 1) if worst_jitter is not None else None,
+        "worst_loss_pct": round(worst_loss, 2) if worst_loss is not None else None,
         "dhcp_assigner": dhcp.get("inferred_assigner") or "",
         "dhcp_confidence": dhcp.get("confidence") or "",
         "blocked_ports": blocked_ports,
@@ -346,7 +481,10 @@ def _quick_view(report_json: str | None, ports: list[dict]) -> dict:
         "open_ports_preview": open_ports[:6],
         "open_count": len(open_ports),
         "total_ports": len(ports),
+        "pcap_unavailable": pcap_unavailable,
     }
+    quick["top_issues"], quick["potential_fixes"] = _derive_issues_and_fixes(quick)
+    return quick
 
 
 @app.route("/scan/<int:sid>")
@@ -360,7 +498,7 @@ def scan_detail(sid: int):
         latency = [dict(r) for r in analytics_db.get_session_latency(conn, sid)]
         ports = [dict(r) for r in analytics_db.get_session_ports(conn, sid)]
     session_d = dict(session)
-    quick = _quick_view(session_d.get("report_json"), ports)
+    quick = _quick_view(session_d.get("report_json"), ports, latency)
     return render_template(
         "scan_detail.html",
         session=session_d,

@@ -32,6 +32,14 @@
         </div>
     </div>
 
+    {% macro rating_badge(rating) -%}
+        {% if rating == 'bad' %}<span class="badge danger">bad</span>
+        {%- elif rating == 'warn' %}<span class="badge warn">warn</span>
+        {%- elif rating == 'ok' %}<span class="badge success">ok</span>
+        {%- elif rating %}<span class="badge muted">{{ rating }}</span>
+        {%- else %}—{% endif %}
+    {%- endmacro %}
+
     <!-- VoIP troubleshooting quick view -->
     <section class="chart-card" aria-label="VoIP troubleshooting quick view">
         <h2>Troubleshooting quick view</h2>
@@ -97,16 +105,29 @@
             <div class="k">Public IP</div>
             <div class="v">{{ session.public_ip or '—' }}</div>
 
-            <div class="k">Latency</div>
+            <div class="k">Latency rating</div>
             <div class="v">
-                {% if quick.latency_status == 'bad' %}
-                    <span class="badge danger">bad</span>
-                {% elif quick.latency_status == 'warn' %}
-                    <span class="badge warn">warn</span>
-                {% elif quick.latency_status %}
-                    <span class="badge success">{{ quick.latency_status }}</span>
-                {% else %}—{% endif %}
-                <span class="muted">{{ quick.latency_summary or '' }}</span>
+                {{ rating_badge(quick.latency_rating or quick.latency_status) }}
+                {% if quick.worst_rtt_ms is not none %}
+                    <span class="muted">worst {{ quick.worst_rtt_ms }} ms RTT</span>
+                {% endif %}
+                {% if quick.latency_summary %}
+                <div class="muted" style="font-size:.85rem; margin-top:2px;">{{ quick.latency_summary }}</div>
+                {% endif %}
+            </div>
+
+            <div class="k">Jitter rating</div>
+            <div class="v">
+                {{ rating_badge(quick.jitter_rating) }}
+                {% if quick.worst_jitter_ms is not none %}
+                    <span class="muted">worst {{ quick.worst_jitter_ms }} ms</span>
+                {% endif %}
+                {% if quick.loss_rating and quick.loss_rating != 'unknown' %}
+                    · loss {{ rating_badge(quick.loss_rating) }}
+                    {% if quick.worst_loss_pct is not none %}
+                        <span class="muted">{{ quick.worst_loss_pct }}%</span>
+                    {% endif %}
+                {% endif %}
             </div>
 
             <div class="k">VLAN</div>
@@ -125,6 +146,39 @@
             <div class="k">Problem reported</div>
             <div class="v">{{ session.problem or '—' }}</div>
         </div>
+
+        {% if quick.top_issues or quick.potential_fixes %}
+        <div class="quick-summary" style="margin-top:14px; display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+            <div>
+                <h3 style="margin:0 0 6px 0; font-size:1rem;">Top issues found</h3>
+                {% if quick.top_issues %}
+                <ul style="margin:0; padding-left:18px;">
+                    {% for it in quick.top_issues %}
+                    <li>{{ it }}</li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="muted" style="margin:0;">No obvious VoIP issues detected in this scan.</p>
+                {% endif %}
+            </div>
+            <div>
+                <h3 style="margin:0 0 6px 0; font-size:1rem;">Potential fixes</h3>
+                {% if quick.potential_fixes %}
+                <ul style="margin:0; padding-left:18px;">
+                    {% for fx in quick.potential_fixes %}
+                    <li>{{ fx }}</li>
+                    {% endfor %}
+                </ul>
+                <p class="muted" style="margin:6px 0 0 0; font-size:.8rem;">
+                    Suggested next steps based on the scan — confirm with your network admin before changing firewall settings.
+                </p>
+                {% else %}
+                <p class="muted" style="margin:0;">No fixes suggested.</p>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
         <p class="muted" style="margin-top:10px; font-size:.85rem;">
             Need the raw evidence?
             <a href="{{ url_for('api_v2_scan_report_json', sid=session.id) }}">Download ScanReport JSON</a>
