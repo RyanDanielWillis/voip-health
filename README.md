@@ -27,7 +27,7 @@ and see results at https://voipscan.danielscience.com/dashboard
 
 ## Desktop client (Windows)
 
-<td width="400" align="center">![VoIP Health Check desktop client](client_gui.png)</td>
+<td width="400" align="center"><img src=/web/static/client_gui.png) /></td>
 
 The desktop client is a portable Windows GUI titled **VoIP Health Check —
 Local network diagnostics for VoIP health**. The screenshot above shows the
