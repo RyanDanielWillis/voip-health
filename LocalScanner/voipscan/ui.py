@@ -119,6 +119,10 @@ class VoipScanApp:
         # Server-assigned scan session id (set after a successful upload).
         # Used to attach the next capture artifact to the same scan.
         self._server_session_id: Optional[str] = None
+        # Set when the user closes the window — workers consult this so
+        # callbacks scheduled via root.after stop touching destroyed Tk
+        # widgets and the process can exit promptly.
+        self._closing = False
 
         self._configure_root()
         self._build_styles()
@@ -471,6 +475,18 @@ class VoipScanApp:
         )
         self.btn_quick.pack(side="left", padx=(0, 12))
 
+        # Stop Scan sits next to Quick Scan so it is unambiguous which
+        # action it cancels. It is disabled until a scan is running.
+        self.btn_stop_scan = ttk.Button(
+            row,
+            text="Stop Scan",
+            style="Secondary.TButton",
+            command=self._on_stop_scan,
+            width=14,
+            state="disabled",
+        )
+        self.btn_stop_scan.pack(side="left", padx=(0, 12))
+
         self.btn_capture = ttk.Button(
             row,
             text="Start Packet Capture",
@@ -794,13 +810,27 @@ class VoipScanApp:
         self._ui_queue.put(msg)
 
     def _drain_queue(self) -> None:
+        if self._closing:
+            return
         try:
             while True:
                 msg = self._ui_queue.get_nowait()
                 self._append_text(msg)
         except queue.Empty:
             pass
-        self.root.after(100, self._drain_queue)
+        try:
+            self.root.after(100, self._drain_queue)
+        except Exception:
+            pass
+
+    def _safe_after(self, delay: int, fn) -> None:
+        """root.after that no-ops once the window is closing/destroyed."""
+        if self._closing:
+            return
+        try:
+            self.root.after(delay, fn)
+        except Exception:
+            pass
 
     def _append_text(self, msg: str) -> None:
         self.txt_results.configure(state="normal")
@@ -814,6 +844,11 @@ class VoipScanApp:
         state = "disabled" if busy else "normal"
         for btn in (self.btn_quick, self.btn_advanced_scan):
             btn.configure(state=state)
+        # Stop Scan is the inverse — only clickable while a scan runs.
+        try:
+            self.btn_stop_scan.configure(state=("normal" if busy else "disabled"))
+        except Exception:
+            pass
         if status:
             self.lbl_status.configure(text=status)
         elif not busy:
@@ -829,6 +864,26 @@ class VoipScanApp:
 
     def _on_advanced_scan(self) -> None:
         self._run_evidence(self._collect_form(), profile="advanced")
+
+    def _on_stop_scan(self) -> None:
+        """Request cancellation of any running Quick/Advanced scan.
+
+        Sets the cancel event the scan worker watches; the worker will
+        terminate its nmap subprocess and short-circuit remaining stages.
+        """
+        if self._scan_thread is None or not self._scan_thread.is_alive():
+            self._enqueue("[scan] No scan is currently running.")
+            return
+        try:
+            self._cancel_event.set()
+        except Exception:
+            pass
+        self._enqueue("[scan] Stop requested — cancelling running scan...")
+        try:
+            self.btn_stop_scan.configure(state="disabled")
+            self.lbl_status.configure(text="Stopping scan...")
+        except Exception:
+            pass
 
     def _set_capture_buttons(self, running: bool) -> None:
         """Toggle Start/Stop button enabled-state based on capture status."""
@@ -940,7 +995,7 @@ class VoipScanApp:
                 self._enqueue(f"[scan] Log saved -> {log_path}")
                 self._upload_scan(report, log_path)
                 self._enqueue("[scan] Switching to plain-English summary view.")
-                self.root.after(0, lambda: self._render_summary(report))
+                self._safe_after(0, lambda: self._render_summary(report))
             except Exception as e:
                 log_exception("Evidence scan failed")
                 self._enqueue(f"[error] {e}")
@@ -954,12 +1009,16 @@ class VoipScanApp:
                     self._upload_log_only(label, log_path, error=str(e))
                 except Exception:
                     log_exception("post-failure log upload failed")
-                messagebox.showerror(
-                    __app_name__,
-                    f"Unexpected error during scan. See logs/voipscan.log.",
-                )
+                if not self._closing:
+                    try:
+                        messagebox.showerror(
+                            __app_name__,
+                            f"Unexpected error during scan. See logs/voipscan.log.",
+                        )
+                    except Exception:
+                        pass
             finally:
-                self.root.after(0, lambda: self._set_busy(False))
+                self._safe_after(0, lambda: self._set_busy(False))
 
         self._scan_thread = threading.Thread(
             target=worker, name="voipscan-evidence", daemon=True
@@ -1352,15 +1411,84 @@ def run() -> None:
     app = VoipScanApp(root)
 
     def _on_close() -> None:
-        # Make sure a running packet capture is stopped cleanly so the
-        # output file is finalized before the process exits.
+        # Closing must never freeze the UI. Calling ``session.stop()`` or
+        # waiting on the scan worker inline blocks the Tk mainloop and
+        # the window appears hung — the user reported this. Instead we
+        # request cancellation, run any blocking cleanup in a worker
+        # thread, and poll briefly before destroying the window. After a
+        # short grace period the window is destroyed regardless so the
+        # process exits promptly even if a subprocess is wedged.
+        if app._closing:
+            return
+        app._closing = True
         try:
-            session = app._capture_session
-            if session is not None and session.is_running:
-                app._stop_packet_capture()
+            app._cancel_event.set()
         except Exception:
-            log_exception("Error stopping capture on close")
-        root.destroy()
+            pass
+        try:
+            app.lbl_status.configure(text="Closing — stopping background work...")
+        except Exception:
+            pass
+
+        cleanup_done = threading.Event()
+
+        def _cleanup() -> None:
+            try:
+                session = app._capture_session
+                if session is not None and session.is_running:
+                    try:
+                        result = session.stop()
+                    except Exception:
+                        log_exception("Error stopping capture on close")
+                        result = None
+                    # Best-effort upload of anything already written so
+                    # the customer's evidence isn't lost. Failures here
+                    # are swallowed — we are on the close path.
+                    try:
+                        if result is not None and result.output_files:
+                            app._upload_capture(result)
+                    except Exception:
+                        log_exception("post-close capture upload failed")
+                    try:
+                        app._upload_log_only(
+                            "packet capture",
+                            logger.get_session_log_path(),
+                        )
+                    except Exception:
+                        log_exception("post-close log upload failed")
+            finally:
+                cleanup_done.set()
+
+        threading.Thread(
+            target=_cleanup, name="voipscan-close-cleanup", daemon=True
+        ).start()
+
+        # Give cleanup a short, bounded window. Whether or not it
+        # finishes, we then destroy the window so the process exits.
+        # The scan worker is daemonized so it dies with the process; its
+        # nmap subprocess has already been signalled via cancel_event.
+        close_deadline_ms = 4000
+        poll_interval_ms = 100
+
+        def _maybe_destroy(elapsed: int = 0) -> None:
+            if cleanup_done.is_set() or elapsed >= close_deadline_ms:
+                try:
+                    root.destroy()
+                except Exception:
+                    pass
+                return
+            try:
+                root.after(
+                    poll_interval_ms,
+                    lambda: _maybe_destroy(elapsed + poll_interval_ms),
+                )
+            except Exception:
+                try:
+                    root.destroy()
+                except Exception:
+                    pass
+
+        _maybe_destroy()
 
     root.protocol("WM_DELETE_WINDOW", _on_close)
     root.mainloop()
