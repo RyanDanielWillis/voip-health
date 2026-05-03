@@ -188,11 +188,35 @@ def dashboard():
                 ids,
             ):
                 art_counts[int(r["session_id"])] = int(r["n"])
+            # Pull blocked port labels per session for a compact troubleshooting
+            # column. Done in one indexed query rather than per-row.
+            blocked_by_sid: dict[int, list[str]] = {}
+            for r in conn.execute(
+                f"SELECT session_id, protocol, port FROM port_results "
+                f"WHERE session_id IN ({placeholders}) "
+                f"AND result IN ('closed','filtered','open|filtered','error') "
+                f"ORDER BY session_id, port",
+                ids,
+            ):
+                sid = int(r["session_id"])
+                proto = (r["protocol"] or "?").upper()
+                blocked_by_sid.setdefault(sid, []).append(f"{proto}/{r['port']}")
             for s in sessions:
                 s["artifact_count"] = art_counts.get(s["id"], 0)
+                blocked = blocked_by_sid.get(s["id"], [])
+                s["blocked_port_labels"] = blocked[:5]
+                s["blocked_port_more"] = max(0, len(blocked) - 5)
+                s["starbox_ip"], s["firewall_ip"] = _row_ips(s.get("report_json"))
         else:
             for s in sessions:
                 s["artifact_count"] = 0
+                s["blocked_port_labels"] = []
+                s["blocked_port_more"] = 0
+                s["starbox_ip"] = ""
+                s["firewall_ip"] = ""
+        # report_json is large — drop after use to keep the template fast.
+        for s in sessions:
+            s.pop("report_json", None)
 
         # Latency trend (avg latency / loss across the most recent 20 scans)
         trend_rows = list(conn.execute(
@@ -224,6 +248,107 @@ def docs():
     return render_template("docs.html")
 
 
+def _safe_dict(v) -> dict:
+    return v if isinstance(v, dict) else {}
+
+
+def _safe_list(v) -> list:
+    return v if isinstance(v, list) else []
+
+
+def _row_ips(report_json: str | None) -> tuple[str, str]:
+    """Return (starbox_ip, firewall_ip) parsed from the stored ScanReport.
+
+    Used by the dashboard list to show operator-supplied IPs without an
+    extra SQL column. Empty strings when missing or unparseable.
+    """
+    try:
+        report = json.loads(report_json) if report_json else {}
+    except Exception:
+        return "", ""
+    if not isinstance(report, dict):
+        return "", ""
+    form = _safe_dict(report.get("form"))
+    auto = _safe_dict(_safe_dict(report.get("resolved_inputs")).get("auto_detected"))
+    starbox = (form.get("starbox_ip") or auto.get("starbox_ip") or "").strip()
+    firewall = (form.get("firewall_ip") or auto.get("firewall_ip") or "").strip()
+    return starbox, firewall
+
+
+def _quick_view(report_json: str | None, ports: list[dict]) -> dict:
+    """Compact troubleshooting fields parsed from the stored ScanReport JSON.
+
+    Falls back to empty values when the report is missing or malformed; the
+    template renders an em-dash for any blank field.
+    """
+    try:
+        report = json.loads(report_json) if report_json else {}
+    except Exception:
+        report = {}
+    if not isinstance(report, dict):
+        report = {}
+
+    form = _safe_dict(report.get("form"))
+    resolved = _safe_dict(report.get("resolved_inputs"))
+    auto = _safe_dict(resolved.get("auto_detected"))
+    gateway = _safe_dict(report.get("gateway"))
+
+    starbox_ip = (form.get("starbox_ip") or auto.get("starbox_ip") or "").strip()
+    firewall_ip = (form.get("firewall_ip") or auto.get("firewall_ip") or "").strip()
+    gateway_ip = (
+        gateway.get("default_gateway")
+        or form.get("gateway_ip")
+        or auto.get("gateway_ip")
+        or ""
+    ).strip()
+
+    blocked_states = {"closed", "filtered", "open|filtered", "error"}
+    blocked_ports = []
+    open_ports = []
+    for p in ports:
+        port_num = p.get("port")
+        proto = (p.get("protocol") or "").lower()
+        result = (p.get("result") or "").lower()
+        if not port_num:
+            continue
+        label = f"{proto.upper() or '?'}/{port_num}"
+        if result in blocked_states:
+            blocked_ports.append({
+                "label": label,
+                "service": p.get("service") or "",
+                "destination": p.get("destination") or "",
+                "result": result,
+            })
+        elif result == "open":
+            open_ports.append(label)
+
+    sip_alg = _safe_dict(report.get("sip_alg"))
+    latency = _safe_dict(report.get("latency"))
+    dhcp = _safe_dict(report.get("dhcp"))
+    vlan = _safe_dict(report.get("vlan"))
+
+    return {
+        "starbox_ip": starbox_ip,
+        "firewall_ip": firewall_ip,
+        "gateway_ip": gateway_ip,
+        "gateway_vendor": gateway.get("gateway_vendor") or "",
+        "sip_alg_overall": sip_alg.get("overall") or "",
+        "sip_alg_confidence": sip_alg.get("confidence") or "",
+        "sip_alg_summary": sip_alg.get("summary") or sip_alg.get("explanation") or "",
+        "vlan_status": vlan.get("status") or "",
+        "vlan_id": vlan.get("vlan_id") or "",
+        "latency_status": latency.get("overall_status") or "",
+        "latency_summary": latency.get("overall_summary") or "",
+        "dhcp_assigner": dhcp.get("inferred_assigner") or "",
+        "dhcp_confidence": dhcp.get("confidence") or "",
+        "blocked_ports": blocked_ports,
+        "blocked_count": len(blocked_ports),
+        "open_ports_preview": open_ports[:6],
+        "open_count": len(open_ports),
+        "total_ports": len(ports),
+    }
+
+
 @app.route("/scan/<int:sid>")
 def scan_detail(sid: int):
     with analytics_db.connect() as conn:
@@ -235,6 +360,7 @@ def scan_detail(sid: int):
         latency = [dict(r) for r in analytics_db.get_session_latency(conn, sid)]
         ports = [dict(r) for r in analytics_db.get_session_ports(conn, sid)]
     session_d = dict(session)
+    quick = _quick_view(session_d.get("report_json"), ports)
     return render_template(
         "scan_detail.html",
         session=session_d,
@@ -242,6 +368,7 @@ def scan_detail(sid: int):
         issues=issues,
         latency=latency,
         ports=ports,
+        quick=quick,
     )
 
 

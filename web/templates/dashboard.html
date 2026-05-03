@@ -54,7 +54,8 @@
                     <th>VLAN</th>
                     <th>Latency</th>
                     <th>Likely cause</th>
-                    <th>Ports</th>
+                    <th>Ports / blocked</th>
+                    <th>GW / FW / Starbox</th>
                     <th>Raw data</th>
                 </tr>
             </thead>
@@ -98,10 +99,25 @@
                     </td>
                     <td>{{ s.likely_blocking or '—' }}</td>
                     <td>
-                        <span class="muted">{{ s.port_open }}/{{ s.port_total }}</span>
+                        <span class="muted">{{ s.port_open }}/{{ s.port_total }} open</span>
                         {% if s.port_blocked %}
-                            <span class="badge danger">{{ s.port_blocked }} blocked</span>
+                            <br><span class="badge danger">{{ s.port_blocked }} blocked</span>
+                            {% if s.blocked_port_labels %}
+                                <div style="margin-top:3px; font-size:.8rem;">
+                                {% for lab in s.blocked_port_labels %}
+                                    <span class="badge danger">{{ lab }}</span>
+                                {% endfor %}
+                                {% if s.blocked_port_more %}
+                                    <span class="muted">+{{ s.blocked_port_more }}</span>
+                                {% endif %}
+                                </div>
+                            {% endif %}
                         {% endif %}
+                    </td>
+                    <td style="font-size:.85rem;">
+                        <span class="muted">GW:</span> {{ s.gateway_ip or '—' }}<br>
+                        <span class="muted">FW:</span> {{ s.firewall_ip or '—' }}<br>
+                        <span class="muted">SB:</span> {{ s.starbox_ip or '—' }}
                     </td>
                     <td>
                         <a href="{{ url_for('api_v2_scan_report_json', sid=s.id) }}">JSON</a>

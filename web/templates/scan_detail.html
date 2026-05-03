@@ -32,33 +32,106 @@
         </div>
     </div>
 
-    <!-- Top-level findings -->
-    <section class="chart-card">
-        <h2>Findings</h2>
+    <!-- VoIP troubleshooting quick view -->
+    <section class="chart-card" aria-label="VoIP troubleshooting quick view">
+        <h2>Troubleshooting quick view</h2>
         <div class="kv-grid">
             <div class="k">SIP ALG</div>
-            <div class="v">{{ session.sip_alg_overall or '—' }}
-                <span class="muted">({{ session.sip_alg_conf or 'inconclusive' }})</span></div>
-            <div class="k">VLAN</div>
-            <div class="v">{{ session.vlan_status or '—' }}
-                <span class="muted">({{ session.vlan_conf or 'inconclusive' }})</span></div>
+            <div class="v">
+                {% set alg = quick.sip_alg_overall %}
+                {% if alg == 'likely_on' %}
+                    <span class="badge danger">likely on</span>
+                {% elif alg == 'likely_off' %}
+                    <span class="badge success">off</span>
+                {% elif alg %}
+                    <span class="badge muted">{{ alg }}</span>
+                {% else %}—{% endif %}
+                <span class="muted">({{ quick.sip_alg_confidence or 'inconclusive' }})</span>
+                {% if quick.sip_alg_summary %}
+                <div class="muted" style="font-size:.85rem; margin-top:2px;">{{ quick.sip_alg_summary }}</div>
+                {% endif %}
+            </div>
+
+            <div class="k">Ports</div>
+            <div class="v">
+                <span class="badge success">{{ quick.open_count }} open</span>
+                {% if quick.blocked_count %}
+                <span class="badge danger">{{ quick.blocked_count }} blocked</span>
+                {% else %}
+                <span class="badge muted">0 blocked</span>
+                {% endif %}
+                <span class="muted">of {{ quick.total_ports }} tested</span>
+                {% if quick.blocked_ports %}
+                <div style="margin-top:6px;">
+                    <span class="muted" style="font-size:.85rem;">Blocked:&nbsp;</span>
+                    {% for bp in quick.blocked_ports %}
+                        <span class="badge danger" title="{{ bp.service }} → {{ bp.destination }} ({{ bp.result }})">{{ bp.label }}</span>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                {% if quick.open_ports_preview %}
+                <div style="margin-top:4px;">
+                    <span class="muted" style="font-size:.85rem;">Open:&nbsp;</span>
+                    {% for op in quick.open_ports_preview %}
+                        <span class="badge success">{{ op }}</span>
+                    {% endfor %}
+                    {% if quick.open_count > quick.open_ports_preview|length %}
+                        <span class="muted" style="font-size:.85rem;">+{{ quick.open_count - quick.open_ports_preview|length }} more</span>
+                    {% endif %}
+                </div>
+                {% endif %}
+            </div>
+
+            <div class="k">Gateway IP</div>
+            <div class="v">{{ quick.gateway_ip or '—' }}
+                {% if quick.gateway_vendor %}<span class="muted">({{ quick.gateway_vendor }})</span>{% endif %}</div>
+
+            <div class="k">Firewall IP</div>
+            <div class="v">{{ quick.firewall_ip or '—' }}
+                {% if not quick.firewall_ip %}<span class="muted">(not specified)</span>{% endif %}</div>
+
+            <div class="k">Starbox IP</div>
+            <div class="v">{{ quick.starbox_ip or '—' }}
+                {% if not quick.starbox_ip %}<span class="muted">(not specified)</span>{% endif %}</div>
+
+            <div class="k">Public IP</div>
+            <div class="v">{{ session.public_ip or '—' }}</div>
+
             <div class="k">Latency</div>
-            <div class="v">{{ session.latency_status or '—' }} —
-                <span class="muted">{{ session.latency_summary or '' }}</span></div>
+            <div class="v">
+                {% if quick.latency_status == 'bad' %}
+                    <span class="badge danger">bad</span>
+                {% elif quick.latency_status == 'warn' %}
+                    <span class="badge warn">warn</span>
+                {% elif quick.latency_status %}
+                    <span class="badge success">{{ quick.latency_status }}</span>
+                {% else %}—{% endif %}
+                <span class="muted">{{ quick.latency_summary or '' }}</span>
+            </div>
+
+            <div class="k">VLAN</div>
+            <div class="v">{{ quick.vlan_status or '—' }}
+                {% if quick.vlan_id %}<span class="muted">(id {{ quick.vlan_id }})</span>{% endif %}
+            </div>
+
             <div class="k">DHCP assigner</div>
-            <div class="v">{{ session.dhcp_assigner or '—' }}
-                <span class="muted">({{ session.dhcp_conf or 'inconclusive' }})</span></div>
+            <div class="v">{{ quick.dhcp_assigner or '—' }}
+                <span class="muted">({{ quick.dhcp_confidence or 'inconclusive' }})</span></div>
+
             <div class="k">Likely cause</div>
             <div class="v">{{ session.likely_blocking or '—' }}
                 <span class="muted">({{ session.attribution_conf or 'inconclusive' }})</span></div>
-            <div class="k">Public IP</div>
-            <div class="v">{{ session.public_ip or '—' }}</div>
-            <div class="k">Gateway</div>
-            <div class="v">{{ session.gateway_ip or '—' }}
-                {% if session.gateway_vendor %}<span class="muted">({{ session.gateway_vendor }})</span>{% endif %}</div>
-            <div class="k">Problem</div>
+
+            <div class="k">Problem reported</div>
             <div class="v">{{ session.problem or '—' }}</div>
         </div>
+        <p class="muted" style="margin-top:10px; font-size:.85rem;">
+            Need the raw evidence?
+            <a href="{{ url_for('api_v2_scan_report_json', sid=session.id) }}">Download ScanReport JSON</a>
+            {% if artifacts %}
+                · <a href="#artifacts">{{ artifacts|length }} artifact{{ '' if artifacts|length == 1 else 's' }}</a>
+            {% endif %}
+        </p>
     </section>
 
     <!-- Issues -->
