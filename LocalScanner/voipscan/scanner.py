@@ -47,7 +47,18 @@ QUICK_UDP_PORTS = "5060,5061"
 TARGETED_TCP_PORTS = "22,80,443,1935,5038,5060,5061,5160,5222,8080,8088,8089"
 TARGETED_UDP_PORTS = "5060,5061,10000-10100"
 NMAP_TIMING = "-T4"
-QUICK_SUBNETS = ["192.168.1.0/24", "192.168.41.0/24"]
+# Default target list for Quick Scan when the operator hasn't specified
+# anything. Kept narrow on purpose — historically this was two full /24s
+# which made the scan run for 10+ minutes and frequently appear to hang.
+# When auto-detection finds a gateway we use just that host instead.
+QUICK_SUBNETS: list[str] = []
+# Hard ceiling so a single unresponsive host can't stall the whole scan.
+NMAP_HOST_TIMEOUT = "60s"
+NMAP_MAX_RETRIES = "1"
+# Overall subprocess wall-clock cap. Kept generous enough that a single
+# /24 sweep can complete, but small enough that an unresponsive network
+# is reported as a timeout rather than left to hang.
+NMAP_OVERALL_TIMEOUT_SECONDS = 300
 
 
 @dataclass
@@ -81,29 +92,44 @@ def find_nmap() -> str | None:
     return None
 
 
-def build_quick_profile() -> ScanProfile:
+def build_quick_profile(targets: Iterable[str] | None = None) -> ScanProfile:
+    # ``-sT`` is a TCP connect scan and silently ignores UDP ports listed
+    # alongside it, so we only ask nmap for TCP ports here. UDP probing
+    # belongs in the Python socket port tests (and the targeted profile),
+    # which already cover the SIP/RTP UDP surface.
     args = [
         "-sT",
         "-Pn",
         "--unprivileged",
         NMAP_TIMING,
-        "-p",
-        f"T:{QUICK_TCP_PORTS},U:{QUICK_UDP_PORTS}",
+        "-p", f"T:{QUICK_TCP_PORTS}",
         "--open",
+        "--host-timeout", NMAP_HOST_TIMEOUT,
+        "--max-retries", NMAP_MAX_RETRIES,
     ]
-    return ScanProfile(name="Quick Scan", args=args, targets=list(QUICK_SUBNETS))
+    cleaned: list[str] = []
+    if targets:
+        cleaned = [t.strip() for t in targets if t and t.strip()]
+    if not cleaned:
+        cleaned = list(QUICK_SUBNETS)
+    return ScanProfile(name="Quick Scan", args=args, targets=cleaned)
 
 
 def build_targeted_profile(targets: Iterable[str]) -> ScanProfile:
+    # Targeted scans intentionally include UDP — the operator has given
+    # us a small set of hosts so the cost is bounded. We add a host
+    # timeout so a single unresponsive host cannot stall the run.
     args = [
         "-sT",
+        "-sU",
         "-sV",
         "-Pn",
         "--unprivileged",
         NMAP_TIMING,
-        "-p",
-        f"T:{TARGETED_TCP_PORTS},U:{TARGETED_UDP_PORTS}",
+        "-p", f"T:{TARGETED_TCP_PORTS},U:{TARGETED_UDP_PORTS}",
         "--open",
+        "--host-timeout", NMAP_HOST_TIMEOUT,
+        "--max-retries", NMAP_MAX_RETRIES,
     ]
     cleaned = [t.strip() for t in targets if t and t.strip()]
     return ScanProfile(name="Targeted Scan", args=args, targets=cleaned)
@@ -119,6 +145,7 @@ def run_nmap_profile(
     profile: ScanProfile,
     on_line: Callable[[str], None],
     cancel_event: threading.Event | None = None,
+    overall_timeout: int = NMAP_OVERALL_TIMEOUT_SECONDS,
 ) -> dict:
     log = get_logger()
     nmap_path = find_nmap()
@@ -130,10 +157,12 @@ def run_nmap_profile(
 
     command = _nmap_command(profile, nmap_path)
     log.info("Running %s: %s", profile.name, shlex.join(command))
+    on_line(f"[scan] {profile.name} starting (timeout {overall_timeout}s)")
     on_line(f"$ {shlex.join(command)}")
 
     stdout_lines: list[str] = []
     stderr_lines: list[str] = []
+    timed_out = False
     try:
         creationflags = 0
         if paths.is_windows():
@@ -150,29 +179,70 @@ def run_nmap_profile(
         log_exception("Failed to launch nmap")
         raise ScanError(f"Could not launch nmap: {e}") from e
 
+    deadline = time.time() + max(5, int(overall_timeout))
+
+    def _terminate(reason: str) -> None:
+        on_line(f"[scan] {profile.name}: {reason}")
+        try:
+            proc.terminate()
+        except Exception:
+            pass
+
     try:
         assert proc.stdout is not None and proc.stderr is not None
-        for line in proc.stdout:
-            line = line.rstrip("\n")
-            stdout_lines.append(line)
-            on_line(line)
-            if cancel_event is not None and cancel_event.is_set():
-                proc.terminate()
-                on_line("[scan cancelled]")
+        # Drain stdout in a worker so we can poll the wall-clock deadline
+        # and the cancel flag without being blocked on a slow line.
+        def reader() -> None:
+            assert proc.stdout is not None
+            for line in proc.stdout:
+                stdout_lines.append(line.rstrip("\n"))
+                on_line(line.rstrip("\n"))
+
+        reader_thread = threading.Thread(
+            target=reader, name="voipscan-nmap-reader", daemon=True
+        )
+        reader_thread.start()
+
+        while True:
+            if proc.poll() is not None:
                 break
-        proc.wait(timeout=600)
+            if cancel_event is not None and cancel_event.is_set():
+                _terminate("cancelled by operator")
+                break
+            if time.time() > deadline:
+                timed_out = True
+                _terminate(f"timed out after {overall_timeout}s — killed")
+                break
+            time.sleep(0.5)
+
+        try:
+            proc.wait(timeout=15)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=5)
+        reader_thread.join(timeout=5)
+
         stderr_remainder = proc.stderr.read()
         if stderr_remainder:
             for line in stderr_remainder.splitlines():
                 stderr_lines.append(line)
                 on_line(f"[stderr] {line}")
-    except subprocess.TimeoutExpired:
-        proc.kill()
-        log_exception("nmap timed out")
-        on_line("[error] nmap timed out after 600s and was killed.")
+    except Exception:
+        log_exception("nmap monitoring loop crashed")
+        try:
+            proc.kill()
+        except Exception:
+            pass
 
     rc = proc.returncode
-    log.info("%s finished rc=%s lines=%d", profile.name, rc, len(stdout_lines))
+    if timed_out:
+        on_line(f"[scan] {profile.name} did not complete within {overall_timeout}s.")
+    elif rc == 0:
+        on_line(f"[scan] {profile.name} completed successfully ({len(stdout_lines)} lines).")
+    else:
+        on_line(f"[scan] {profile.name} finished with rc={rc} ({len(stdout_lines)} lines).")
+    log.info("%s finished rc=%s lines=%d timed_out=%s",
+             profile.name, rc, len(stdout_lines), timed_out)
     return {
         "profile": profile.name,
         "command": command,
@@ -180,6 +250,7 @@ def run_nmap_profile(
         "stdout": "\n".join(stdout_lines),
         "stderr": "\n".join(stderr_lines),
         "returncode": rc,
+        "timed_out": timed_out,
     }
 
 

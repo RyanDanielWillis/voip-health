@@ -48,7 +48,7 @@ LocalScanner/
 | SIP ALG | SIP OPTIONS over UDP and TCP to a configured test endpoint (Via/Contact rewrite check), public-vs-private IP context, Windows local services (negative evidence), gateway-vendor prior (SonicWall / FortiGate / Cisco / etc.) | Strong / Likely / Inconclusive |
 | Sangoma port reachability | Every rule in the published port guide. Big ranges (RTP 10000-65000, Mobile 10000-40000, etc.) are **sampled** — see `sangoma_ports.py`. | Confirmed (TCP), Inconclusive (UDP without reply) |
 | Device attribution | Combines port test results, gateway vendor and operator-supplied IPs to point at *local-firewall / gateway / firewall / ISP / remote* | Likely / Inconclusive |
-| Packet capture | Detects Npcap / Wireshark dumpcap so the operator can confirm the only definitive proof method (capture → diff) is feasible | n/a |
+| Packet capture | Live capture from the GUI using Wireshark `dumpcap` (preferred) or built-in Windows `pktmon` (fallback). Output saved to `captures/` as `.pcapng` (or `.etl`/`.txt` for older pktmon). | n/a |
 
 ### Honest limits
 
@@ -87,6 +87,69 @@ splits values into `manual_inputs` (what the operator typed),
 `auto_detected` (what the scanner inferred), and `skipped` (which
 checks were intentionally left out) so the future VPS upload can tell
 provided values apart from inferred ones.
+
+## Packet capture
+
+The **Start Packet Capture** button records VoIP-relevant traffic to a
+file you can open in Wireshark. Click it once to start; click again
+(the button reads **Stop Packet Capture**) to stop and finalize the
+file. Captures are written to a `captures/` folder next to the
+executable with timestamped filenames.
+
+The app picks an engine in this order:
+
+1. **Wireshark `dumpcap`** — preferred. Looked up on `PATH` and at
+   `C:\Program Files\Wireshark\dumpcap.exe`. Writes a real `.pcapng`
+   with a BPF filter focused on SIP (5060/5061), Sangoma signalling
+   (5160/5161, 8088/8089, 2160) and a slice of RTP (`UDP 10000-20000`).
+   Requires **Npcap** (https://npcap.com/) for live capture; if Npcap
+   isn't found a warning is logged but capture is still attempted.
+2. **Windows `pktmon`** — built-in fallback (Windows 10 1809+). Filters
+   the same SIP/Sangoma ports, captures to `.etl`, and on stop tries to
+   convert to `.pcapng` via `pktmon etl2pcap`. On older builds without
+   `etl2pcap` the app additionally writes a text dump from
+   `pktmon format` so the data is still inspectable. **`pktmon`
+   requires running the app as Administrator.**
+
+If neither tool is available a friendly message points at the
+Wireshark installer or the built-in `pktmon` so the operator knows
+exactly what to install.
+
+If a capture starts but produces an empty file, the most common cause
+is missing Npcap (for `dumpcap`) or insufficient privileges (for
+`pktmon`). Re-run the app **as Administrator** and confirm Npcap is
+installed.
+
+The BPF filter, port list, soft stop time, and output location are
+declared as constants at the top of `voipscan/capture.py` so they're
+easy to tweak.
+
+## Quick Scan / nmap pass behavior
+
+The legacy nmap "Quick Scan" used to broadcast across two full `/24`
+subnets with both TCP and UDP ports listed under a `-sT` connect scan,
+which both wasted UDP probes (nmap silently ignores UDP entries with
+`-sT`) and frequently took 10+ minutes — long enough that the operator
+saw the GUI as hung.
+
+The current nmap pass:
+
+* Defaults to **no broad subnet target** — only operator-supplied IPs
+  (Gateway / Firewall / Starbox under *Advanced*) or the auto-detected
+  default gateway.
+* Splits TCP and UDP correctly: Quick Scan is TCP-only, the Targeted
+  Scan adds `-sU` for UDP because the host list is small.
+* Adds `--host-timeout 60s` and `--max-retries 1` so a single
+  unresponsive host can't stall the whole scan.
+* Caps overall nmap wall-clock at 5 minutes; on timeout the run is
+  killed and the rest of the evidence scan still finishes.
+* Streams `[scan] starting`, the literal command, every nmap output
+  line, and a final `completed` / `timed out` / `rc=…` line so the
+  operator can always see why the scan ended.
+
+The constants live at the top of `voipscan/scanner.py`
+(`QUICK_TCP_PORTS`, `NMAP_HOST_TIMEOUT`, `NMAP_OVERALL_TIMEOUT_SECONDS`)
+and can be edited freely.
 
 ## Output
 
@@ -148,6 +211,7 @@ VoIPHealthCheck/
 | `logs/voipscan.log` | Rotating runtime log (1 MB × 3) |
 | `logs/voipscan_evidence_*.log` | Per-scan saved log + JSON report |
 | `reports/` | Default save location for "Download Results" |
+| `captures/` | Packet captures (`.pcapng` from dumpcap, or `.etl`/`.pcapng`/`.txt` from pktmon) |
 
 ## Customizing
 
@@ -165,9 +229,10 @@ VoIPHealthCheck/
 - **Wire up VPS upload** — fill in `voipscan/upload.py`'s
   `upload_report()`. The payload is exactly `ScanReport.to_dict()` so
   the schema is single-sourced in `report.py`.
-- **Enable real packet capture** — replace `start_capture_stub()` in
-  `voipscan/capture.py` with a `dumpcap.exe` shellout or `pyshark`
-  call once the driver story is settled.
+- **Tweak packet capture filters / output** — top of
+  `voipscan/capture.py` (`DUMPCAP_BPF_FILTER`,
+  `DUMPCAP_AUTOSTOP_SECONDS`, `DUMPCAP_AUTOSTOP_MEGABYTES`, the pktmon
+  port set, `PKTMON_AUTOSTOP_SECONDS`).
 
 ## Legacy
 

@@ -99,6 +99,8 @@ class VoipScanApp:
         self._last_log_path: Optional[Path] = None
         self._last_results: list[dict] = []  # legacy nmap dicts (kept for compat)
 
+        self._capture_session: Optional[capture.CaptureSession] = None
+
         self._configure_root()
         self._build_styles()
         self._build_header()
@@ -580,13 +582,19 @@ class VoipScanApp:
         self.txt_results.configure(state="disabled")
 
     def _set_busy(self, busy: bool, status: str = "") -> None:
+        # Capture button intentionally stays enabled so the user can
+        # start/stop a packet capture while a scan is running.
         state = "disabled" if busy else "normal"
-        for btn in (self.btn_quick, self.btn_capture, self.btn_scan_now):
+        for btn in (self.btn_quick, self.btn_scan_now):
             btn.configure(state=state)
         if status:
             self.lbl_status.configure(text=status)
         elif not busy:
-            self.lbl_status.configure(text="Idle.")
+            session = self._capture_session
+            if session is not None and session.is_running:
+                self.lbl_status.configure(text=f"Capturing packets ({session.engine})...")
+            else:
+                self.lbl_status.configure(text="Idle.")
 
     # -- Action handlers --------------------------------------------------
     def _on_evidence_scan(self) -> None:
@@ -596,10 +604,65 @@ class VoipScanApp:
         self._run_evidence(self._collect_form())
 
     def _on_packet_capture(self) -> None:
-        self._enqueue(capture.start_capture_stub())
-        status = capture.detect_capture_engine()
-        if not status.available:
-            messagebox.showinfo(__app_name__, status.detail)
+        # The button toggles between Start / Stop. We keep one session at a
+        # time; the heavy lifting lives in voipscan.capture.
+        session = self._capture_session
+        if session is not None and session.is_running:
+            self._stop_packet_capture()
+            return
+        self._start_packet_capture()
+
+    def _start_packet_capture(self) -> None:
+        try:
+            session = capture.CaptureSession(on_log=self._enqueue)
+            status = session.start()
+        except capture.CaptureUnavailable as e:
+            self._enqueue(f"[capture] {e}")
+            messagebox.showinfo(__app_name__, str(e))
+            return
+        except Exception as e:
+            log_exception("Packet capture failed to start")
+            self._enqueue(f"[capture] Failed to start: {e}")
+            messagebox.showerror(
+                __app_name__,
+                f"Packet capture could not start: {e}\n\n"
+                "If this looks like a permissions issue, try running the "
+                "app as Administrator. dumpcap also requires Npcap.",
+            )
+            return
+        self._capture_session = session
+        self._enqueue(f"[capture] Engine: {status.engine}. {status.detail}")
+        self.btn_capture.configure(text="Stop Packet Capture")
+        self.lbl_status.configure(text=f"Capturing packets ({status.engine})...")
+
+    def _stop_packet_capture(self) -> None:
+        session = self._capture_session
+        if session is None:
+            return
+        try:
+            result = session.stop()
+        except Exception as e:
+            log_exception("Packet capture stop failed")
+            self._enqueue(f"[capture] Stop error: {e}")
+            result = None
+        self.btn_capture.configure(text="Start Packet Capture")
+        self.lbl_status.configure(text="Idle.")
+        self._capture_session = None
+        if result is None:
+            return
+        for note in result.notes:
+            self._enqueue(f"[capture] {note}")
+        if result.output_files:
+            files = ", ".join(p.name for p in result.output_files)
+            self._enqueue(
+                f"[capture] Capture stopped — saved file(s): {files} "
+                f"in {result.output_files[0].parent}"
+            )
+        else:
+            self._enqueue(
+                "[capture] Capture stopped — no output file was produced. "
+                "Check that the app has permission to capture packets."
+            )
 
     def _run_evidence(self, form: FormInputs) -> None:
         if self._scan_thread and self._scan_thread.is_alive():
@@ -872,5 +935,18 @@ class VoipScanApp:
 def run() -> None:
     logger.init_logging()
     root = tk.Tk()
-    VoipScanApp(root)
+    app = VoipScanApp(root)
+
+    def _on_close() -> None:
+        # Make sure a running packet capture is stopped cleanly so the
+        # output file is finalized before the process exits.
+        try:
+            session = app._capture_session
+            if session is not None and session.is_running:
+                app._stop_packet_capture()
+        except Exception:
+            log_exception("Error stopping capture on close")
+        root.destroy()
+
+    root.protocol("WM_DELETE_WINDOW", _on_close)
     root.mainloop()

@@ -87,5 +87,12 @@ def reports_dir() -> Path:
     return path
 
 
+def captures_dir() -> Path:
+    """Local directory where packet captures (.pcapng / .etl) land."""
+    path = app_root() / "captures"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def is_windows() -> bool:
     return os.name == "nt"
