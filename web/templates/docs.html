@@ -1,0 +1,484 @@
+{% extends "base.html" %}
+{% set active_page = "docs" %}
+{% block title %}Documentation — VoIP Health Check{% endblock %}
+
+{% block content %}
+<div class="docs-layout">
+    <aside class="docs-sidebar" aria-label="Documentation sections">
+        <div class="docs-sidebar-inner">
+            <p class="docs-sidebar-title">On this page</p>
+            <nav class="docs-toc" aria-label="Table of contents">
+                <a href="#overview">Overview</a>
+                <a href="#getting-started">Getting started</a>
+                <a href="#desktop-client">Desktop client</a>
+                <a href="#evidence-collection">Evidence collection</a>
+                <a href="#diagnostics">Diagnostics</a>
+                <a href="#packet-capture">Packet capture</a>
+                <a href="#upload-pipeline">Upload pipeline</a>
+                <a href="#backend">Backend &amp; database</a>
+                <a href="#security">Security model</a>
+                <a href="#dashboard">Dashboard analytics</a>
+                <a href="#deployment">Deployment &amp; operations</a>
+                <a href="#troubleshooting">Troubleshooting</a>
+                <a href="#roadmap">Future roadmap</a>
+                <a href="#maintenance">Maintenance checklist</a>
+            </nav>
+        </div>
+    </aside>
+
+    <article class="docs-content container">
+        <header class="docs-header">
+            <h1>Documentation</h1>
+            <p class="muted">
+                Reference for the VoIP Health Check desktop client, REST API,
+                Flask dashboard, and deployment workflow. Use the menu on the
+                left to jump to a section.
+            </p>
+        </header>
+
+        <section id="overview">
+            <h2>Overview</h2>
+            <p>
+                <strong>VoIP Health Check</strong> is a two-part system: a
+                portable Windows desktop client that gathers <em>evidence</em>
+                from a phone-system network, and a Flask web service that
+                ingests those reports, stores them in SQLite, and renders a
+                live analytics dashboard. The whole pipeline is built around
+                one principle &mdash; <em>evidence over guesses</em>. Every
+                conclusion the app surfaces is backed by data captured during
+                the scan.
+            </p>
+            <p>
+                Operators use the desktop client at the customer site to
+                produce a <code class="inline">ScanReport</code>, which is
+                automatically uploaded to
+                <code class="inline">/api/v2/scan/upload</code>. From there the
+                Flask app normalises results into a typed schema (sessions,
+                issues, latency targets, ports, artifacts) and exposes them on
+                this site at <a href="{{ url_for('dashboard') }}">/dashboard</a>
+                and on per-scan detail pages.
+            </p>
+        </section>
+
+        <section id="getting-started">
+            <h2>Getting started</h2>
+            <h3>End users (technicians)</h3>
+            <ol>
+                <li>Download the latest portable Windows package from the
+                    <a href="https://github.com/RyanDanielWillis/voip-health/actions/workflows/build-localscanner.yml"
+                       target="_blank" rel="noopener noreferrer">Build
+                    LocalScanner Windows EXE</a> workflow &mdash; choose the
+                    <code class="inline">VoIPHealthCheck-windows-package</code>
+                    artifact for the bundled <code class="inline">nmap/</code>
+                    folder.</li>
+                <li>Unzip into a fresh folder (e.g.
+                    <code class="inline">C:\Tools\VoIPHealthCheck-2.2.0\</code>).
+                    No installer is required.</li>
+                <li>Launch the versioned executable
+                    (<code class="inline">VoIPHealthCheck-2.2.0.exe</code>) so
+                    the file name itself confirms which build you are
+                    running.</li>
+                <li>Click <strong>Run Evidence Scan</strong>. When the scan
+                    finishes the GUI switches to a plain-English summary, the
+                    raw log is written to disk, and the report is uploaded to
+                    this dashboard.</li>
+            </ol>
+
+            <h3>Developers</h3>
+            <p>
+                The Flask app lives in <code class="inline">web/</code>. Run
+                it locally with:
+            </p>
+<pre class="code-block">pip install -r requirements.txt
+FLASK_APP=web.app flask run
+# or directly
+python -m web.app</pre>
+            <p>
+                The desktop client lives in <code class="inline">LocalScanner/</code>
+                and is launched via
+                <code class="inline">python -m voipscan</code> or by running
+                <code class="inline">LocalScanner/run.bat</code> on Windows.
+            </p>
+        </section>
+
+        <section id="desktop-client">
+            <h2>Desktop client</h2>
+            <p>
+                The Windows GUI is a Tkinter / ttk app organised around three
+                cards: <strong>Run Evidence Scan</strong>, an
+                <strong>Optional</strong> details panel, and a
+                <strong>Scan Results / Log</strong> pane that swaps between a
+                streaming log and a plain-English summary when the scan
+                completes.
+            </p>
+            <ul>
+                <li><strong>Run Evidence Scan</strong> &mdash; primary one-click
+                    scan. Auto-detects the gateway, runs the diagnostics
+                    pipeline, generates a <code class="inline">ScanReport</code>,
+                    saves a raw log, and uploads to the dashboard.</li>
+                <li><strong>Start / Stop Packet Capture</strong> &mdash; dedicated
+                    buttons for capturing packets independently of a scan,
+                    backed by <code class="inline">dumpcap</code> when Wireshark/Npcap
+                    is present and <code class="inline">pktmon</code> as a fallback.</li>
+                <li><strong>Optional &rarr; Advanced</strong> &mdash; collapsible
+                    panel exposing Hosted Platform (Auto, On-Prem, Cloud Only,
+                    Remote Phone), Gateway IP, Firewall IP, Starbox IP, and an
+                    optional SIP test endpoint. Every field is optional and is
+                    auto-detected or skipped cleanly when blank.</li>
+                <li><strong>Scan Now</strong> &mdash; runs the same evidence
+                    pipeline but consumes the values entered in Advanced.</li>
+                <li><strong>Download Results / Show Raw Log / Show Summary</strong>
+                    &mdash; export the report as JSON or text, or toggle
+                    between the streaming log and the summary view.</li>
+            </ul>
+            <p>
+                The 2.2.0 release uses a light, modern theme with a teal
+                accent, ttk-styled buttons, equal-width primary actions, and
+                status badges in the summary. The window is resizeable; all
+                long-form content scrolls.
+            </p>
+        </section>
+
+        <section id="evidence-collection">
+            <h2>Evidence collection</h2>
+            <p>
+                Each scan produces a structured
+                <code class="inline">ScanReport</code> defined in
+                <code class="inline">LocalScanner/voipscan/report.py</code>.
+                The report is the single source of truth and is what the
+                server stores and renders. Evidence sources include:
+            </p>
+            <ul>
+                <li><strong>Network info</strong> &mdash; hostname, gateway
+                    detection from OS routes, public IP lookup, and local
+                    interface enumeration via
+                    <code class="inline">netinfo.py</code>.</li>
+                <li><strong>SIP ALG checks</strong> &mdash; probes that look
+                    for evidence of carrier-grade NAT or router SIP-helper
+                    rewriting (<code class="inline">sipalg.py</code>).</li>
+                <li><strong>Port reachability</strong> &mdash; targeted TCP/UDP
+                    probes against SIP, RTP, and Sangoma-relevant ports
+                    (<code class="inline">porttests.py</code>,
+                    <code class="inline">sangoma_ports.py</code>).</li>
+                <li><strong>VLAN signal</strong> &mdash; LLDP / 802.1Q hints
+                    where the OS exposes them
+                    (<code class="inline">vlan.py</code>).</li>
+                <li><strong>Latency / jitter</strong> &mdash; ICMP
+                    round-trip-time, jitter, and packet loss against a small
+                    set of voice-relevant targets
+                    (<code class="inline">latency.py</code>).</li>
+                <li><strong>DHCP</strong> &mdash; lease state and assignment
+                    evidence (<code class="inline">dhcp.py</code>).</li>
+            </ul>
+            <p class="muted">
+                Confidence is reported per-section; the app deliberately uses
+                wording such as "likely on" / "likely off" rather than absolute
+                claims when the evidence is indirect.
+            </p>
+        </section>
+
+        <section id="diagnostics">
+            <h2>SIP ALG, ports, VLAN, latency &amp; DHCP</h2>
+            <p>
+                The diagnostics layer is broken into focused modules so each
+                check can be reasoned about (and tested) independently. Each
+                produces a section the GUI renders with a status badge
+                (<code class="inline">OK</code>, <code class="inline">WARN</code>,
+                <code class="inline">BAD</code>, <code class="inline">INFO</code>,
+                <code class="inline">UNK</code>) plus a plain-English summary,
+                supporting bullets, and suggested fixes.
+            </p>
+            <ul>
+                <li><strong>SIP ALG &mdash;</strong> compares observed SIP
+                    behaviour to known ALG-rewriting fingerprints.</li>
+                <li><strong>Ports &mdash;</strong> measures open / blocked /
+                    filtered counts for the VoIP-relevant set, surfaces likely
+                    blocking on the dashboard.</li>
+                <li><strong>VLAN &mdash;</strong> reports tag visibility where
+                    the OS exposes it.</li>
+                <li><strong>Latency &mdash;</strong> per-target RTT, jitter, and
+                    packet-loss percentages, classified
+                    <code class="inline">good</code> / <code class="inline">warn</code>
+                    / <code class="inline">bad</code>.</li>
+                <li><strong>DHCP &mdash;</strong> distinguishes static-vs-DHCP
+                    assignment and surfaces evidence of double-NAT.</li>
+            </ul>
+        </section>
+
+        <section id="packet-capture">
+            <h2>Packet capture</h2>
+            <p>
+                The capture engine
+                (<code class="inline">LocalScanner/voipscan/capture.py</code>)
+                prefers <code class="inline">dumpcap</code> from Wireshark/Npcap
+                because it produces standards-compliant
+                <code class="inline">.pcapng</code> files. When Npcap is
+                unavailable it falls back to Windows
+                <code class="inline">pktmon</code> which produces
+                <code class="inline">.etl</code> files (or text dumps depending
+                on the OS build).
+            </p>
+            <p>
+                Captures run in a separate session so the Start/Stop buttons
+                stay live during a scan. On stop, output files are listed in
+                the log and automatically uploaded to the server, attached to
+                the most recent scan session when one exists.
+            </p>
+        </section>
+
+        <section id="upload-pipeline">
+            <h2>Upload pipeline</h2>
+            <p>
+                Uploads are handled by
+                <code class="inline">LocalScanner/voipscan/upload.py</code>.
+                After a scan finishes, the GUI:
+            </p>
+            <ol>
+                <li>Posts the structured <code class="inline">ScanReport</code>
+                    JSON to <code class="inline">POST /api/v2/scan/upload</code>.</li>
+                <li>Stores the server-assigned <code class="inline">session_id</code>
+                    in memory so subsequent capture artifacts can be attached.</li>
+                <li>Posts the raw streaming log as a
+                    <code class="inline">log</code> artifact via
+                    <code class="inline">POST /api/v2/scan/&lt;id&gt;/artifact</code>.</li>
+                <li>On every Stop Capture, posts each output file as a
+                    <code class="inline">capture</code> artifact attached to
+                    the same scan, or via
+                    <code class="inline">POST /api/v2/capture/upload</code>
+                    when no scan id exists.</li>
+            </ol>
+            <p>
+                Upload failures never break the local scan. The full report,
+                raw log, and any capture file remain on the operator's machine
+                regardless of network state.
+            </p>
+        </section>
+
+        <section id="backend">
+            <h2>Backend &amp; database</h2>
+            <p>
+                The server is a single Flask app
+                (<code class="inline">web/app.py</code>) backed by SQLite. The
+                schema is defined and migrated by
+                <code class="inline">web/db.py</code>.
+            </p>
+            <ul>
+                <li><strong>scan_sessions</strong> &mdash; one row per uploaded
+                    scan, with normalised columns for hostname, IPs, SIP ALG
+                    overall, latency status, issue counts, port counts, and
+                    likely-cause hints.</li>
+                <li><strong>issues</strong> &mdash; per-session issues with
+                    severity (<code class="inline">critical</code> /
+                    <code class="inline">warning</code> /
+                    <code class="inline">info</code>) and a category.</li>
+                <li><strong>latency_targets</strong> &mdash; per-target RTT,
+                    jitter, packet loss, and classification.</li>
+                <li><strong>ports</strong> &mdash; per-port reachability state.</li>
+                <li><strong>artifacts</strong> &mdash; logs, captures, report
+                    JSON dumps, with size, sha256, and storage path.</li>
+                <li><strong>schema_version</strong> &mdash; tracks the active
+                    schema and guards the one-time legacy reset.</li>
+            </ul>
+            <p>
+                On the first deploy under schema version 2, the previous
+                <code class="inline">audit_data.db</code> (single
+                <code class="inline">audits</code> JSON blob) is automatically
+                backed up to
+                <code class="inline">audit_data.db.legacy_&lt;timestamp&gt;.bak</code>
+                next to the original file, dropped, and recreated. Subsequent
+                restarts are no-ops.
+            </p>
+            <h3>REST API</h3>
+            <table class="data-table">
+                <thead>
+                    <tr><th>Endpoint</th><th>Purpose</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td><code class="inline">POST /api/v2/scan/upload</code></td><td>JSON <code class="inline">ScanReport</code> upload (auto-called by client).</td></tr>
+                    <tr><td><code class="inline">POST /api/v2/scan/&lt;id&gt;/artifact</code></td><td>Multipart artifact attached to a scan (log, capture).</td></tr>
+                    <tr><td><code class="inline">POST /api/v2/capture/upload</code></td><td>Standalone capture upload, no session required.</td></tr>
+                    <tr><td><code class="inline">GET  /api/v2/scan/&lt;id&gt;</code></td><td>JSON dump of a session including artifacts.</td></tr>
+                    <tr><td><code class="inline">GET  /api/v2/scans</code></td><td>List recent sessions.</td></tr>
+                    <tr><td><code class="inline">GET  /api/v2/artifact/&lt;id&gt;/download</code></td><td>Raw artifact download.</td></tr>
+                    <tr><td><code class="inline">GET  /api/v2/scan/&lt;id&gt;/report.json</code></td><td>Canonical report download.</td></tr>
+                    <tr><td><code class="inline">GET  /api/v2/status</code></td><td>Health, schema version, KPIs.</td></tr>
+                </tbody>
+            </table>
+        </section>
+
+        <section id="security">
+            <h2>Security model</h2>
+            <ul>
+                <li><strong>Bearer-token auth on uploads</strong> &mdash; when
+                    <code class="inline">VOIPSCAN_UPLOAD_TOKEN</code> is set on
+                    the server, every upload endpoint requires
+                    <code class="inline">Authorization: Bearer &lt;token&gt;</code>.
+                    Comparisons use
+                    <code class="inline">hmac.compare_digest</code> to defeat
+                    timing attacks.</li>
+                <li><strong>Filename hardening</strong> &mdash; uploads are
+                    sanitised through <code class="inline">secure_filename</code>
+                    plus a regex fallback, then truncated; only an allow-list
+                    of extensions
+                    (<code class="inline">.pcap, .pcapng, .cap, .etl, .txt, .log, .json</code>)
+                    is accepted.</li>
+                <li><strong>Size cap</strong> &mdash; configurable via
+                    <code class="inline">VOIPSCAN_MAX_UPLOAD</code>; the streaming
+                    handler aborts and removes any partial file before the
+                    response is sent.</li>
+                <li><strong>Storage isolation</strong> &mdash; artifacts land
+                    under <code class="inline">VOIPSCAN_ARTIFACT_DIR</code>
+                    (default <code class="inline">~/voipscan_api/artifacts/</code>)
+                    in per-session subdirectories with timestamped filenames
+                    and a SHA-256 recorded in the database.</li>
+                <li><strong>Safe Quick Scan profile</strong> &mdash; the
+                    desktop client deliberately replaced the legacy broad nmap
+                    sweep with a constrained profile so the scanner cannot be
+                    pointed at unrelated networks. The active profile is
+                    logged at startup for traceability.</li>
+                <li><strong>No PII on disk</strong> &mdash; the report focuses
+                    on network evidence (IPs, ports, RTTs) rather than
+                    customer-identifying content.</li>
+            </ul>
+        </section>
+
+        <section id="dashboard">
+            <h2>Dashboard analytics</h2>
+            <p>
+                <a href="{{ url_for('dashboard') }}">/dashboard</a> aggregates
+                across the entire <code class="inline">scan_sessions</code>
+                table:
+            </p>
+            <ul>
+                <li>KPI strip &mdash; total scans, critical issues, warnings,
+                    blocked / filtered ports, average scan duration.</li>
+                <li>Latency trend &mdash; rolling chart of average RTT, jitter
+                    and packet loss across the most recent 20 sessions, drawn
+                    by Chart.js.</li>
+                <li>Recent scans table &mdash; per-session severity badges,
+                    SIP ALG verdict, VLAN status, latency status, likely
+                    cause, port counts, and links to the raw JSON / artifact
+                    set.</li>
+            </ul>
+            <p>
+                Per-scan detail pages
+                (<a href="{{ url_for('dashboard') }}">/scan/&lt;id&gt;</a>)
+                expose the full evidence: KPIs, every issue with severity,
+                every probed port, every latency target, and download links
+                for the JSON report and captured artifacts.
+            </p>
+        </section>
+
+        <section id="deployment">
+            <h2>Deployment &amp; operations</h2>
+            <p>
+                The Flask app is designed to run behind
+                <code class="inline">gunicorn</code> on a small VPS. The
+                included <code class="inline">update.py</code> automates a
+                pull-and-restart cycle. Useful environment variables:
+            </p>
+            <ul>
+                <li><code class="inline">VOIPSCAN_UPLOAD_TOKEN</code> &mdash;
+                    bearer token required for upload endpoints.</li>
+                <li><code class="inline">VOIPSCAN_ARTIFACT_DIR</code> &mdash;
+                    where artifacts are stored on disk.</li>
+                <li><code class="inline">VOIPSCAN_MAX_UPLOAD</code> &mdash;
+                    upload size cap in bytes (default 25&nbsp;MiB).</li>
+            </ul>
+            <p>
+                The Windows package is built by GitHub Actions
+                (<code class="inline">.github/workflows/build-localscanner.yml</code>).
+                Each artifact ships a versioned executable plus
+                <code class="inline">BUILD_INFO.txt</code> and
+                <code class="inline">VERSION.txt</code> so an operator can
+                confirm the exact build from the file name and a single log
+                line.
+            </p>
+        </section>
+
+        <section id="troubleshooting">
+            <h2>Troubleshooting</h2>
+            <h3>Scan appears to hang or shows the wrong version</h3>
+            <p>
+                The 2.2.0 build replaced the legacy broad nmap sweep with the
+                <strong>Safe Quick Scan profile</strong>. On startup the
+                client logs the version, executable path, working directory,
+                application root, and the contents of
+                <code class="inline">BUILD_INFO.txt</code>. If your log shows
+                version <code class="inline">2.0.0</code> or no
+                <code class="inline">Executable:</code> line, you are running
+                an old executable &mdash; almost always a stale shortcut to a
+                previous <code class="inline">VoipScanner_Desktop</code>
+                folder. Delete the old folder, download the latest package
+                artifact, extract into a fresh folder, and launch the
+                versioned exe.
+            </p>
+            <h3>Captures fail to start</h3>
+            <p>
+                <code class="inline">dumpcap</code> requires Npcap. Without it
+                the engine falls back to Windows
+                <code class="inline">pktmon</code>, which requires elevation
+                on most builds. Run the app as Administrator if you need
+                <code class="inline">pktmon</code> output.
+            </p>
+            <h3>Upload returns 401</h3>
+            <p>
+                The server has <code class="inline">VOIPSCAN_UPLOAD_TOKEN</code>
+                set. Configure the matching token on the client either via the
+                <code class="inline">VOIPSCAN_UPLOAD_TOKEN</code> environment
+                variable or
+                <code class="inline">%LOCALAPPDATA%\VoipScan\upload.json</code>.
+            </p>
+        </section>
+
+        <section id="roadmap">
+            <h2>Future roadmap</h2>
+            <ul>
+                <li>Optional macOS / Linux build of the desktop client.</li>
+                <li>Per-customer tagging on the dashboard for multi-tenant
+                    deployments.</li>
+                <li>Pluggable export to SARIF for CI integration.</li>
+                <li>Richer visualisation on per-scan detail (per-target
+                    latency sparklines, port heatmap).</li>
+                <li>Automated regression suite around the
+                    <code class="inline">interpret</code> module so plain-English
+                    output cannot drift silently.</li>
+            </ul>
+        </section>
+
+        <section id="maintenance">
+            <h2>Maintenance checklist</h2>
+            <p>
+                Whenever the desktop client, Flask app, REST API, schema, or
+                deployment story changes, update the documentation in the
+                same pull request. This page is the canonical, in-app
+                reference and must stay in sync.
+            </p>
+            <ul>
+                <li>New REST endpoint &rarr; add a row in the
+                    <a href="#backend">Backend &amp; database</a> table.</li>
+                <li>New diagnostics module &rarr; add a bullet under
+                    <a href="#evidence-collection">Evidence collection</a> and
+                    <a href="#diagnostics">Diagnostics</a>.</li>
+                <li>Database / schema change &rarr; update
+                    <a href="#backend">Backend &amp; database</a> and the
+                    legacy-reset notes.</li>
+                <li>Auth / security control change &rarr; update
+                    <a href="#security">Security model</a>.</li>
+                <li>New environment variable or deployment step &rarr; update
+                    <a href="#deployment">Deployment &amp; operations</a>.</li>
+                <li>GUI change &rarr; refresh the
+                    <a href="#desktop-client">Desktop client</a> section and
+                    the screenshot in the README.</li>
+                <li>Bumped version &rarr; refresh the troubleshooting banner
+                    text under <a href="#troubleshooting">Troubleshooting</a>.</li>
+            </ul>
+            <p class="muted">
+                The same checklist is mirrored in
+                <code class="inline">README.md</code>; treat them as one
+                document split across two surfaces.
+            </p>
+        </section>
+    </article>
+</div>
+{% endblock %}

@@ -43,6 +43,8 @@
                    class="{% if active_page == 'home' %}active{% endif %}">Home</a>
                 <a href="{{ url_for('dashboard') }}"
                    class="{% if active_page == 'dashboard' %}active{% endif %}">Dashboard</a>
+                <a href="{{ url_for('docs') }}"
+                   class="{% if active_page == 'docs' %}active{% endif %}">Documentation</a>
             </nav>
             <div class="header-actions">
                 <a class="icon-link"
@@ -69,5 +71,25 @@
     <main>
         {% block content %}{% endblock %}
     </main>
+
+    <footer class="site-footer" role="contentinfo">
+        <div class="footer-inner">
+            <div class="footer-brand">
+                <strong>VoIP Health Check</strong>
+                <span class="muted"> &middot; evidence-focused VoIP diagnostics</span>
+            </div>
+            <nav class="footer-links" aria-label="Footer">
+                <a href="{{ url_for('index') }}">Home</a>
+                <a href="{{ url_for('dashboard') }}">Dashboard</a>
+                <a href="{{ url_for('docs') }}">Documentation</a>
+                <a href="https://github.com/RyanDanielWillis/voip-health"
+                   target="_blank" rel="noopener noreferrer">GitHub</a>
+                <a class="footer-home-link"
+                   href="https://danielscience.com/"
+                   target="_blank" rel="noopener noreferrer"
+                   aria-label="Visit DanielScience.com">DanielScience.com &rarr;</a>
+            </nav>
+        </div>
+    </footer>
 </body>
 </html>

@@ -1,6 +1,6 @@
 <table>
   <tr><td width="200" align="center">
-    <img src=/web/static/logo.png />
+    <img src="web/static/logo.png" alt="VoIP Health Check logo" width="160">
   </td>
   <td>
    <h1>VoIP Health Check</h1>
@@ -27,7 +27,11 @@ and see results at https://voipscan.danielscience.com/dashboard
 
 ## Desktop client (Windows)
 
-<td width="400" align="center"><img src=/web/static/client_gui.png) /></td>
+<p align="center">
+  <img src="client_gui.png"
+       alt="VoIP Health Check Windows client GUI showing the evidence-scan card, optional context fields, and the scan results / log pane."
+       width="400">
+</p>
 
 The desktop client is a portable Windows GUI titled **VoIP Health Check —
 Local network diagnostics for VoIP health**. The screenshot above shows the
@@ -165,6 +169,37 @@ gets wiped on every deploy.
 
 The artifact directory defaults to `~/voipscan_api/artifacts/` and can
 be overridden with `VOIPSCAN_ARTIFACT_DIR`.
+
+## Documentation
+
+The hosted Flask app exposes a full reference at
+[`/docs`](https://voipscan.danielscience.com/docs). The same page is rendered
+from `web/templates/docs.html` and is the canonical, in-product
+documentation for end users, technicians, and reviewers.
+
+### Keeping documentation in sync
+
+Whenever a change touches the desktop client, REST API, schema,
+diagnostics modules, deployment story, or security model, update the
+documentation in the **same pull request**. The page and this README are
+designed to drift together.
+
+Quick checklist:
+
+- [ ] **New REST endpoint** — add a row in the docs page *Backend &
+  database* section and (if user-visible) in the README API table.
+- [ ] **New diagnostics module** — add a bullet in the docs page
+  *Evidence collection* and *Diagnostics* sections.
+- [ ] **Schema / database change** — refresh the schema list in the docs
+  page and the legacy-reset notes here.
+- [ ] **Auth / security change** — update the docs *Security model*
+  section.
+- [ ] **New environment variable / deployment step** — update the docs
+  *Deployment & operations* section.
+- [ ] **GUI change** — refresh the docs *Desktop client* section and the
+  `client_gui.png` screenshot in this README.
+- [ ] **Version bump** — update the troubleshooting banner text in both
+  this README and the docs *Troubleshooting* section.
 
 ## Why it exists
 Built from real VoIP troubleshooting pain. Tired of "reboot router" answers? This tells you *exactly* what's broken and how to fix it.

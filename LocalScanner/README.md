@@ -9,6 +9,14 @@ USB stick on locked-down customer machines without installation.
 > as `client_gui.png` (also served by the Flask homepage at
 > `/static/client_gui.png`). The repo-root README and the homepage
 > describe what each control on the window does.
+>
+> **Documentation:** the canonical reference for this client lives at
+> <https://voipscan.danielscience.com/docs> (template
+> `web/templates/docs.html`). Whenever you change the GUI, evidence
+> modules, capture engine, upload pipeline, or any user-visible
+> behaviour, update both the docs page and the repo-root
+> [README](../README.md#documentation) in the same pull request — the
+> maintenance checklist there lists the sections to refresh.
 
 ## Download (Windows)
 

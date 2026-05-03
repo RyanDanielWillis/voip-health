@@ -41,19 +41,29 @@ from .logger import get_logger, log_exception
 from .report import FormInputs, ScanReport
 
 # ---- Theme ---------------------------------------------------------------
-BG = "#0f1115"
-SURFACE = "#181b22"
-SURFACE_2 = "#1f232c"
-BORDER = "#2a2f3a"
-TEXT = "#e6e8ec"
-TEXT_MUTED = "#9aa3b2"
-ACCENT = "#d9534f"
-ACCENT_HOVER = "#ff7a73"
-SUCCESS = "#2ecc71"
-WARN = "#f5a623"
-DANGER = "#e74c3c"
-INFO_BLUE = "#3aa0ff"
+# Light, modern palette. The window sits on a soft off-white wash, with
+# white "card" surfaces, a teal primary accent, and quiet grey borders so
+# the UI reads as a professional clinical tool rather than a terminal.
+BG = "#f4f6fa"           # page background (very light, easy on the eyes)
+SURFACE = "#ffffff"      # card surface
+SURFACE_2 = "#f7f9fc"    # subtle secondary surface (log pane, optional card body)
+SURFACE_HOVER = "#eef1f7"
+BORDER = "#dde2eb"
+BORDER_STRONG = "#c7cdda"
+TEXT = "#1c2230"         # near-black primary text
+TEXT_MUTED = "#5b6473"
+ACCENT = "#0f8a8a"        # teal primary
+ACCENT_HOVER = "#0c7373"
+ACCENT_SOFT = "#e0f1f1"
+SECONDARY = "#1f6feb"     # blue used for secondary CTAs / focus rings
+SECONDARY_HOVER = "#1158c7"
+SUCCESS = "#1e8e3e"
+WARN = "#b78107"
+DANGER = "#c0392b"
+INFO_BLUE = "#1f6feb"
 GREY = "#6b7280"
+LOG_BG = "#fbfcfe"
+LOG_FG = "#22272e"
 
 # Status badge colors used in the post-scan summary view.
 STATUS_COLORS = {
@@ -183,8 +193,8 @@ class VoipScanApp:
     # -- Window / styling -------------------------------------------------
     def _configure_root(self) -> None:
         self.root.title(__app_name__)
-        self.root.geometry("960x780")
-        self.root.minsize(820, 640)
+        self.root.geometry("1000x820")
+        self.root.minsize(860, 660)
         self.root.configure(bg=BG)
 
         try:
@@ -202,22 +212,33 @@ class VoipScanApp:
         except tk.TclError:
             pass
 
+        # Frames & general containers
         style.configure("TFrame", background=BG)
         style.configure("Surface.TFrame", background=SURFACE)
+        style.configure("Surface2.TFrame", background=SURFACE_2)
+
+        # Card-style label frames (used for "Optional" + Results panes)
         style.configure(
             "Card.TLabelframe",
             background=SURFACE,
             foreground=TEXT,
             bordercolor=BORDER,
+            lightcolor=BORDER,
+            darkcolor=BORDER,
             relief="solid",
+            borderwidth=1,
+            padding=14,
         )
         style.configure(
             "Card.TLabelframe.Label",
             background=SURFACE,
             foreground=TEXT_MUTED,
-            font=("Segoe UI", 10, "bold"),
+            font=("Segoe UI Semibold", 10, "bold"),
         )
-        style.configure("TLabel", background=BG, foreground=TEXT, font=("Segoe UI", 10))
+
+        # Labels — typography hierarchy
+        style.configure("TLabel", background=BG, foreground=TEXT,
+                        font=("Segoe UI", 10))
         style.configure(
             "Surface.TLabel",
             background=SURFACE,
@@ -231,10 +252,16 @@ class VoipScanApp:
             font=("Segoe UI", 9),
         )
         style.configure(
+            "MutedBg.TLabel",
+            background=BG,
+            foreground=TEXT_MUTED,
+            font=("Segoe UI", 9),
+        )
+        style.configure(
             "Header.TLabel",
             background=BG,
             foreground=TEXT,
-            font=("Segoe UI", 18, "bold"),
+            font=("Segoe UI Semibold", 20, "bold"),
         )
         style.configure(
             "Subheader.TLabel",
@@ -243,70 +270,147 @@ class VoipScanApp:
             font=("Segoe UI", 10),
         )
         style.configure(
+            "VersionPill.TLabel",
+            background=ACCENT_SOFT,
+            foreground=ACCENT,
+            font=("Segoe UI Semibold", 10, "bold"),
+            padding=(10, 4),
+        )
+        style.configure(
+            "BuildTag.TLabel",
+            background=BG,
+            foreground=TEXT_MUTED,
+            font=("Segoe UI", 9),
+        )
+
+        # Default ("ghost") button — quiet white tile
+        style.configure(
             "TButton",
-            background=SURFACE_2,
+            background=SURFACE,
             foreground=TEXT,
             bordercolor=BORDER,
+            lightcolor=BORDER,
+            darkcolor=BORDER,
             focusthickness=0,
-            padding=(14, 8),
+            relief="flat",
+            borderwidth=1,
+            padding=(14, 9),
             font=("Segoe UI", 10),
         )
         style.map(
             "TButton",
-            background=[("active", BORDER)],
+            background=[("active", SURFACE_HOVER), ("disabled", SURFACE_2)],
+            bordercolor=[("active", BORDER_STRONG)],
             foreground=[("disabled", TEXT_MUTED)],
         )
+
+        # Primary button — solid teal CTA
         style.configure(
             "Primary.TButton",
             background=ACCENT,
             foreground="#ffffff",
-            font=("Segoe UI", 11, "bold"),
-            padding=(18, 10),
+            bordercolor=ACCENT,
+            lightcolor=ACCENT,
+            darkcolor=ACCENT,
+            focusthickness=0,
+            relief="flat",
+            borderwidth=1,
+            font=("Segoe UI Semibold", 11, "bold"),
+            padding=(20, 11),
         )
         style.map(
             "Primary.TButton",
             background=[("active", ACCENT_HOVER), ("disabled", BORDER)],
+            bordercolor=[("active", ACCENT_HOVER), ("disabled", BORDER)],
+            foreground=[("disabled", TEXT_MUTED)],
         )
+
+        # Secondary button — outlined teal
         style.configure(
             "Secondary.TButton",
-            background=SURFACE_2,
-            foreground=TEXT,
-            padding=(16, 9),
-            font=("Segoe UI", 10, "bold"),
+            background=SURFACE,
+            foreground=ACCENT,
+            bordercolor=ACCENT,
+            lightcolor=ACCENT,
+            darkcolor=ACCENT,
+            focusthickness=0,
+            relief="flat",
+            borderwidth=1,
+            font=("Segoe UI Semibold", 10, "bold"),
+            padding=(18, 10),
         )
+        style.map(
+            "Secondary.TButton",
+            background=[("active", ACCENT_SOFT), ("disabled", SURFACE_2)],
+            foreground=[("disabled", TEXT_MUTED)],
+            bordercolor=[("disabled", BORDER)],
+        )
+
+        # Inputs
         style.configure(
             "TEntry",
-            fieldbackground=SURFACE_2,
-            background=SURFACE_2,
+            fieldbackground="#ffffff",
+            background="#ffffff",
             foreground=TEXT,
             bordercolor=BORDER,
+            lightcolor=BORDER,
+            darkcolor=BORDER,
             insertcolor=TEXT,
+            padding=6,
+        )
+        style.map(
+            "TEntry",
+            bordercolor=[("focus", SECONDARY)],
+            lightcolor=[("focus", SECONDARY)],
+            darkcolor=[("focus", SECONDARY)],
         )
         style.configure(
             "TCombobox",
-            fieldbackground=SURFACE_2,
-            background=SURFACE_2,
+            fieldbackground="#ffffff",
+            background="#ffffff",
             foreground=TEXT,
-            arrowcolor=TEXT,
+            arrowcolor=TEXT_MUTED,
+            bordercolor=BORDER,
+            lightcolor=BORDER,
+            darkcolor=BORDER,
+            padding=4,
         )
         style.map(
             "TCombobox",
-            fieldbackground=[("readonly", SURFACE_2)],
+            fieldbackground=[("readonly", "#ffffff")],
             foreground=[("readonly", TEXT)],
+            bordercolor=[("focus", SECONDARY)],
+            arrowcolor=[("active", TEXT)],
         )
         style.configure(
             "TRadiobutton",
             background=SURFACE,
             foreground=TEXT,
-            indicatorcolor=SURFACE_2,
+            indicatorcolor="#ffffff",
+            indicatorbackground="#ffffff",
             font=("Segoe UI", 10),
         )
-        style.map("TRadiobutton", background=[("active", SURFACE)])
+        style.map(
+            "TRadiobutton",
+            background=[("active", SURFACE)],
+            indicatorcolor=[("selected", ACCENT)],
+        )
+
+        style.configure("TSeparator", background=BORDER)
+        style.configure(
+            "Vertical.TScrollbar",
+            background=SURFACE_2,
+            troughcolor=SURFACE,
+            bordercolor=BORDER,
+            arrowcolor=TEXT_MUTED,
+            lightcolor=BORDER,
+            darkcolor=BORDER,
+        )
 
     # -- Header -----------------------------------------------------------
     def _build_header(self) -> None:
         header = ttk.Frame(self.root, style="TFrame")
-        header.pack(fill="x", padx=18, pady=(16, 8))
+        header.pack(fill="x", padx=24, pady=(20, 6))
 
         try:
             logo_file = paths.logo_path()
@@ -316,7 +420,7 @@ class VoipScanApp:
                 self._header_logo = raw.subsample(ratio, ratio)
                 tk.Label(
                     header, image=self._header_logo, bg=BG, bd=0
-                ).pack(side="left", padx=(0, 14))
+                ).pack(side="left", padx=(0, 16))
         except Exception:
             log_exception("Could not load header logo")
 
@@ -327,28 +431,33 @@ class VoipScanApp:
             text_col,
             text="Evidence-focused VoIP network diagnostics for Windows.",
             style="Subheader.TLabel",
-        ).pack(anchor="w")
-        # Visible build/version chip on the right of the header so the
-        # operator can confirm at a glance which build is running. If a
-        # customer reports the legacy hang, ask them to read this label
-        # and check it matches the latest GitHub Actions artifact.
+        ).pack(anchor="w", pady=(2, 0))
+        # Right column: a small "pill" with the version, plus the build
+        # tag underneath. The pill makes the running version unmistakable
+        # in screenshots and over-the-shoulder support.
         version_col = ttk.Frame(header, style="TFrame")
         version_col.pack(side="right")
         ttk.Label(
             version_col,
             text=f"v{__version__}",
-            style="Header.TLabel",
+            style="VersionPill.TLabel",
         ).pack(anchor="e")
         ttk.Label(
             version_col,
             text=__build_tag__,
-            style="Subheader.TLabel",
-        ).pack(anchor="e")
+            style="BuildTag.TLabel",
+        ).pack(anchor="e", pady=(4, 0))
+
+        # Hairline separator between the header and the action row gives
+        # the layout a cleaner, more deliberate rhythm.
+        ttk.Separator(self.root, orient="horizontal").pack(
+            fill="x", padx=24, pady=(12, 0)
+        )
 
     # -- Primary actions --------------------------------------------------
     def _build_primary_actions(self) -> None:
         row = ttk.Frame(self.root, style="TFrame")
-        row.pack(fill="x", padx=18, pady=(4, 12))
+        row.pack(fill="x", padx=24, pady=(16, 14))
 
         # All buttons on this row share equal sizing and spacing so the
         # layout stays balanced even as labels change ("Start" vs "Stop").
@@ -359,7 +468,7 @@ class VoipScanApp:
             command=self._on_evidence_scan,
             width=22,
         )
-        self.btn_quick.pack(side="left", padx=(0, 10))
+        self.btn_quick.pack(side="left", padx=(0, 12))
 
         self.btn_capture = ttk.Button(
             row,
@@ -368,7 +477,7 @@ class VoipScanApp:
             command=self._start_packet_capture,
             width=22,
         )
-        self.btn_capture.pack(side="left", padx=(0, 10))
+        self.btn_capture.pack(side="left", padx=(0, 12))
 
         self.btn_capture_stop = ttk.Button(
             row,
@@ -383,9 +492,10 @@ class VoipScanApp:
     # -- Optional section -------------------------------------------------
     def _build_optional_section(self) -> None:
         card = ttk.Labelframe(
-            self.root, text=" Optional: ", style="Card.TLabelframe", padding=14
+            self.root, text=" Optional context ", style="Card.TLabelframe",
+            padding=16,
         )
-        card.pack(fill="x", padx=18, pady=(0, 12))
+        card.pack(fill="x", padx=24, pady=(0, 14))
 
         row1 = ttk.Frame(card, style="Surface.TFrame")
         row1.pack(fill="x", pady=(0, 8))
@@ -542,17 +652,22 @@ class VoipScanApp:
     def _build_results(self) -> None:
         card = ttk.Labelframe(
             self.root,
-            text=" Scan Results / Log ",
+            text=" Scan results & log ",
             style="Card.TLabelframe",
-            padding=10,
+            padding=12,
         )
-        card.pack(fill="both", expand=True, padx=18, pady=(0, 8))
+        card.pack(fill="both", expand=True, padx=24, pady=(0, 10))
         self._results_card = card
 
         # Container that swaps between the streaming text and the
-        # post-scan summary view.
-        self.results_container = tk.Frame(card, bg=SURFACE_2, highlightthickness=1,
-                                          highlightbackground=BORDER)
+        # post-scan summary view. A subtle border keeps the pane visually
+        # distinct from the surrounding card without adding visual noise.
+        self.results_container = tk.Frame(
+            card,
+            bg=SURFACE_2,
+            highlightthickness=1,
+            highlightbackground=BORDER,
+        )
         self.results_container.pack(fill="both", expand=True)
 
         self._build_text_view()
@@ -560,17 +675,24 @@ class VoipScanApp:
         self._show_text_view()
 
     def _build_text_view(self) -> None:
-        self.text_view = tk.Frame(self.results_container, bg=SURFACE_2)
+        self.text_view = tk.Frame(self.results_container, bg=LOG_BG)
+        # Monospaced "console" log. Light background keeps with the rest
+        # of the GUI; we just use a slightly different shade so it reads
+        # as a log surface rather than ordinary copy.
         self.txt_results = tk.Text(
             self.text_view,
-            bg=SURFACE_2,
-            fg=TEXT,
+            bg=LOG_BG,
+            fg=LOG_FG,
             insertbackground=TEXT,
+            selectbackground=ACCENT_SOFT,
+            selectforeground=TEXT,
             relief="flat",
             wrap="word",
             font=("Consolas", 10),
-            padx=10,
-            pady=8,
+            padx=12,
+            pady=10,
+            borderwidth=0,
+            highlightthickness=0,
         )
         self.txt_results.pack(side="left", fill="both", expand=True)
         scroll = ttk.Scrollbar(self.text_view, command=self.txt_results.yview)
@@ -623,7 +745,7 @@ class VoipScanApp:
 
     def _build_footer(self) -> None:
         row = ttk.Frame(self.root, style="TFrame")
-        row.pack(fill="x", padx=18, pady=(0, 16))
+        row.pack(fill="x", padx=24, pady=(0, 18))
 
         self.btn_download = ttk.Button(
             row, text="Download Results", style="Secondary.TButton", command=self._on_download
@@ -882,20 +1004,22 @@ class VoipScanApp:
         color = STATUS_COLORS.get(sec.status, GREY)
         icon_text = ICONS.get(sec.key, "?")
 
-        outer = tk.Frame(parent, bg=SURFACE_2, padx=12, pady=8)
-        outer.pack(fill="x", padx=4, pady=(8, 0))
+        outer = tk.Frame(parent, bg=SURFACE_2, padx=14, pady=10)
+        outer.pack(fill="x", padx=4, pady=(10, 0))
 
         # A row containing the colored badge canvas + the section header.
         head = tk.Frame(outer, bg=SURFACE_2)
         head.pack(fill="x")
 
+        # Filled circle with white glyph reads cleanly on any of the
+        # status colours against the light page background.
         badge = tk.Canvas(
             head, width=44, height=44, bg=SURFACE_2, highlightthickness=0
         )
-        badge.pack(side="left", padx=(0, 10))
+        badge.pack(side="left", padx=(0, 12))
         badge.create_oval(2, 2, 42, 42, fill=color, outline=color)
-        badge.create_text(22, 22, text=icon_text, fill="#0f1115",
-                          font=("Segoe UI", 16, "bold"))
+        badge.create_text(22, 22, text=icon_text, fill="#ffffff",
+                          font=("Segoe UI Semibold", 16, "bold"))
 
         title_col = tk.Frame(head, bg=SURFACE_2)
         title_col.pack(side="left", fill="x", expand=True)

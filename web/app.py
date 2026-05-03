@@ -218,6 +218,12 @@ def dashboard():
     )
 
 
+@app.route("/docs")
+def docs():
+    """Project documentation page (in-app, kept in sync with the README)."""
+    return render_template("docs.html")
+
+
 @app.route("/scan/<int:sid>")
 def scan_detail(sid: int):
     with analytics_db.connect() as conn:
