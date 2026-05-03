@@ -54,22 +54,40 @@ main window:
 
 ### Download the Windows client
 
-The portable Windows `.exe` is built and published by the GitHub Actions
-workflow on every push to `main` (and on demand via *Run workflow*). To
-get the latest build:
+**Permanent download location:** the
+[**GitHub Releases page**](https://github.com/RyanDanielWillis/voip-health/releases)
+for this repo. Each release is published by the
+[*Release LocalScanner Windows EXE*](https://github.com/RyanDanielWillis/voip-health/actions/workflows/release-localscanner.yml)
+workflow and ships the same self-identifying package described below.
+Releases never expire — prefer them over Actions artifacts when sharing
+a download link with end users.
 
-1. Open the [**Build LocalScanner Windows EXE**](https://github.com/RyanDanielWillis/voip-health/actions/workflows/build-localscanner.yml)
-   workflow page.
-2. Click the most recent successful run.
-3. Under **Artifacts**, download
-   [`VoIPHealthCheck-windows-exe`](https://github.com/RyanDanielWillis/voip-health/actions/workflows/build-localscanner.yml)
-   (single `.exe`) or `VoIPHealthCheck-windows-package` (the `.exe`
-   alongside the bundled `nmap/` folder, recommended for full scanning).
-4. Unzip into a fresh folder (e.g. `C:\Tools\VoIPHealthCheck-2.2.0\`)
-   and run `VoIPHealthCheck-2.2.0.exe` — no installer required. (The
+To install the latest release:
+
+1. Open the [**Releases page**](https://github.com/RyanDanielWillis/voip-health/releases)
+   and pick the newest `localscanner-v<version>` release (or
+   [download the latest directly](https://github.com/RyanDanielWillis/voip-health/releases/latest)).
+2. Under **Assets**, download
+   `VoIPHealthCheck-windows-package-<version>.zip` (recommended — exe
+   plus bundled `nmap/`, `BUILD_INFO.txt`, `VERSION.txt`, README) or the
+   standalone `VoIPHealthCheck-<version>.exe`.
+3. Unzip into a fresh folder (e.g. `C:\Tools\VoIPHealthCheck-2.2.0\`)
+   and run `VoIPHealthCheck-<version>.exe` — no installer required. (The
    unversioned `VoIPHealthCheck.exe` next to it is byte-identical and
    exists so existing shortcuts keep working; the versioned name makes
    the build obvious at a glance.)
+
+> **Dev / pre-release builds.** The
+> [`build-localscanner.yml`](https://github.com/RyanDanielWillis/voip-health/actions/workflows/build-localscanner.yml)
+> workflow still publishes per-commit binaries as Actions
+> *workflow-run artifacts*. Those are useful for testing an unreleased
+> change but expire after GitHub's retention window and require
+> navigating the Actions UI — they are **not** the recommended download
+> path for end users. Releases are.
+
+`.exe` and `.zip` files are intentionally **not** committed to the
+repository. The release workflow is the source of truth so the
+published binary always tracks a specific commit.
 
 The hosted homepage at https://voipscan.danielscience.com also surfaces
 the same screenshot, copy and download instructions for end users.
@@ -102,8 +120,10 @@ folder from a previous install. To recover:
 
 1. Delete the old `VoipScanner_Desktop` folder and any desktop / Start
    Menu shortcuts that point at it.
-2. Download the latest `VoIPHealthCheck-windows-package` artifact from
-   the *Build LocalScanner Windows EXE* GitHub Actions workflow.
+2. Download the latest `VoIPHealthCheck-windows-package-<version>.zip`
+   from the
+   [Releases page](https://github.com/RyanDanielWillis/voip-health/releases/latest)
+   (the *Release LocalScanner Windows EXE* workflow publishes it).
 3. **Extract the zip to a fresh folder** (e.g.
    `C:\Tools\VoIPHealthCheck-2.2.0\`). Do not extract on top of an
    older folder.

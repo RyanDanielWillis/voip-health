@@ -1,0 +1,194 @@
+name: Release LocalScanner Windows EXE
+
+# Builds the LocalScanner Windows executable + distribution package and
+# publishes them as assets on a GitHub Release. Releases are the
+# permanent, easy-to-find download location for end users — workflow-run
+# artifacts (from build-localscanner.yml) remain available as
+# secondary / dev builds, but expire after GitHub's retention window
+# and require navigating the Actions UI.
+#
+# Run via "Run workflow" in the Actions UI. The default version is read
+# from LocalScanner/voipscan/__init__.py (currently 2.2.0). The release
+# is tagged `localscanner-v<version>` unless an explicit `tag` input is
+# provided.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version string for assets (defaults to LocalScanner/voipscan/__init__.py __version__)'
+        required: false
+        default: ''
+      tag:
+        description: 'Git tag for the release (defaults to localscanner-v<version>)'
+        required: false
+        default: ''
+      prerelease:
+        description: 'Mark the release as a pre-release'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: cmd
+        working-directory: LocalScanner
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pyinstaller
+          if exist requirements.txt python -m pip install -r requirements.txt
+
+      - name: Run PyInstaller
+        run: pyinstaller build_tools\voipscan.spec --noconfirm
+
+      - name: Stage distribution package
+        shell: pwsh
+        run: |
+          $pkg = "package\VoIPHealthCheck"
+          New-Item -ItemType Directory -Force -Path $pkg | Out-Null
+          Copy-Item "dist\VoIPHealthCheck.exe" -Destination $pkg
+
+          # Resolve the version: explicit input wins, otherwise read it
+          # from the package source so the release assets always match
+          # the code in this commit.
+          $inputVersion = "${{ github.event.inputs.version }}"
+          $initText = Get-Content "voipscan\__init__.py" -Raw
+          $sourceVersion = ([regex]::Match($initText, '__version__\s*=\s*"([^"]+)"')).Groups[1].Value
+          if (-not $sourceVersion) { $sourceVersion = "unknown" }
+          if ($inputVersion) {
+            $version = $inputVersion
+          } else {
+            $version = $sourceVersion
+          }
+          $buildTag = ([regex]::Match($initText, '__build_tag__\s*=\s*"([^"]+)"')).Groups[1].Value
+          if (-not $buildTag) { $buildTag = "unknown" }
+          Write-Host "Detected source version=$sourceVersion build_tag=$buildTag — using version=$version"
+
+          # Versioned copy of the exe alongside the canonical name. Both
+          # are kept so existing shortcuts pointing at VoIPHealthCheck.exe
+          # keep working, while the versioned name makes it obvious at a
+          # glance which build is in the folder.
+          Copy-Item "dist\VoIPHealthCheck.exe" -Destination (Join-Path $pkg "VoIPHealthCheck-$version.exe")
+
+          $buildTimestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+          $sha = $env:GITHUB_SHA
+          if (-not $sha) { $sha = "local" }
+          $shortSha = if ($sha.Length -ge 7) { $sha.Substring(0,7) } else { $sha }
+          $runId = $env:GITHUB_RUN_ID
+          if (-not $runId) { $runId = "local" }
+          $runNumber = $env:GITHUB_RUN_NUMBER
+          if (-not $runNumber) { $runNumber = "local" }
+          $refName = $env:GITHUB_REF_NAME
+          if (-not $refName) { $refName = "local" }
+          $repo = $env:GITHUB_REPOSITORY
+          if (-not $repo) { $repo = "local" }
+
+          $buildInfoLines = @(
+            "VoIP Health Check LocalScanner",
+            "version:        $version",
+            "build_tag:      $buildTag",
+            "git_sha:        $sha",
+            "git_short_sha:  $shortSha",
+            "git_ref:        $refName",
+            "repo:           $repo",
+            "workflow_run:   $runId",
+            "workflow_run_number: $runNumber",
+            "build_utc:      $buildTimestamp",
+            "exe_canonical:  VoIPHealthCheck.exe",
+            "exe_versioned:  VoIPHealthCheck-$version.exe"
+          )
+          Set-Content -Path (Join-Path $pkg "BUILD_INFO.txt") -Value $buildInfoLines -Encoding UTF8
+          Set-Content -Path (Join-Path $pkg "VERSION.txt") -Value "$version" -Encoding UTF8
+          Write-Host "Staged BUILD_INFO.txt:"
+          Get-Content (Join-Path $pkg "BUILD_INFO.txt")
+
+          if (Test-Path "nmap") {
+            Copy-Item "nmap" -Destination $pkg -Recurse
+            Write-Host "Bundled nmap/ folder into package."
+          } else {
+            Write-Host "No nmap/ folder present in repo; exe must be distributed alongside an nmap/ folder for full scanning."
+          }
+          if (Test-Path "README.md") { Copy-Item "README.md" -Destination $pkg }
+
+          # Stage the release assets in a flat folder so the upload step
+          # can glob them without picking up intermediate build files.
+          $assets = "release_assets"
+          New-Item -ItemType Directory -Force -Path $assets | Out-Null
+          $versionedExe = "VoIPHealthCheck-$version.exe"
+          Copy-Item (Join-Path $pkg $versionedExe) -Destination (Join-Path $assets $versionedExe)
+
+          $zipName = "VoIPHealthCheck-windows-package-$version.zip"
+          $zipPath = Join-Path $assets $zipName
+          if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
+          Compress-Archive -Path (Join-Path $pkg "*") -DestinationPath $zipPath
+          Write-Host "Created release zip: $zipPath"
+
+          # Surface the resolved values to subsequent steps via the
+          # workflow output channel.
+          "version=$version"          | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "build_tag=$buildTag"       | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "exe_name=$versionedExe"    | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "zip_name=$zipName"         | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+        id: stage
+
+      - name: Resolve release tag
+        shell: pwsh
+        run: |
+          $version = "${{ steps.stage.outputs.version }}"
+          $tag = "${{ github.event.inputs.tag }}"
+          if (-not $tag) { $tag = "localscanner-v$version" }
+          Write-Host "Release tag: $tag"
+          "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+        id: tag
+
+      - name: Create or update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: LocalScanner ${{ steps.stage.outputs.version }}
+          prerelease: ${{ github.event.inputs.prerelease == 'true' }}
+          fail_on_unmatched_files: true
+          body: |
+            VoIP Health Check — LocalScanner Windows desktop client.
+
+            **Version:** ${{ steps.stage.outputs.version }}
+            **Build tag:** ${{ steps.stage.outputs.build_tag }}
+            **Commit:** ${{ github.sha }}
+
+            ## Downloads
+
+            - **`${{ steps.stage.outputs.exe_name }}`** — portable single-file executable. Drop it next to an `nmap/` folder for full scanning.
+            - **`${{ steps.stage.outputs.zip_name }}`** — recommended distribution package. Contains the versioned exe, the canonical `VoIPHealthCheck.exe`, `BUILD_INFO.txt`, `VERSION.txt`, the `LocalScanner/README.md`, and the bundled `nmap/` folder when present in the repo at build time.
+
+            ## Install
+
+            1. Download the zip above.
+            2. Extract into a fresh folder (e.g. `C:\Tools\VoIPHealthCheck-${{ steps.stage.outputs.version }}\`). Do **not** extract on top of an older folder.
+            3. Launch `${{ steps.stage.outputs.exe_name }}` — the file name itself confirms the build.
+
+            See the [LocalScanner README](https://github.com/${{ github.repository }}/blob/main/LocalScanner/README.md) for the full troubleshooting / packaging notes.
+          files: |
+            LocalScanner/release_assets/${{ steps.stage.outputs.exe_name }}
+            LocalScanner/release_assets/${{ steps.stage.outputs.zip_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

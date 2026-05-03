@@ -65,12 +65,16 @@
             <h3>End users (technicians)</h3>
             <ol>
                 <li>Download the latest portable Windows package from the
+                    <a href="https://github.com/RyanDanielWillis/voip-health/releases/latest"
+                       target="_blank" rel="noopener noreferrer">GitHub
+                    Releases page</a> &mdash; choose the
+                    <code class="inline">VoIPHealthCheck-windows-package-&lt;version&gt;.zip</code>
+                    asset for the bundled <code class="inline">nmap/</code>
+                    folder. (Releases are the permanent download
+                    location; per-commit dev builds remain available as
                     <a href="https://github.com/RyanDanielWillis/voip-health/actions/workflows/build-localscanner.yml"
                        target="_blank" rel="noopener noreferrer">Build
-                    LocalScanner Windows EXE</a> workflow &mdash; choose the
-                    <code class="inline">VoIPHealthCheck-windows-package</code>
-                    artifact for the bundled <code class="inline">nmap/</code>
-                    folder.</li>
+                    LocalScanner Windows EXE</a> workflow artifacts.)</li>
                 <li>Unzip into a fresh folder (e.g.
                     <code class="inline">C:\Tools\VoIPHealthCheck-2.2.0\</code>).
                     No installer is required.</li>
@@ -386,13 +390,22 @@ python -m web.app</pre>
                     upload size cap in bytes (default 25&nbsp;MiB).</li>
             </ul>
             <p>
-                The Windows package is built by GitHub Actions
-                (<code class="inline">.github/workflows/build-localscanner.yml</code>).
-                Each artifact ships a versioned executable plus
-                <code class="inline">BUILD_INFO.txt</code> and
-                <code class="inline">VERSION.txt</code> so an operator can
-                confirm the exact build from the file name and a single log
-                line.
+                The Windows package is published as a
+                <a href="https://github.com/RyanDanielWillis/voip-health/releases"
+                   target="_blank" rel="noopener noreferrer">GitHub Release</a>
+                by
+                <code class="inline">.github/workflows/release-localscanner.yml</code>
+                (manually triggered via <em>Run workflow</em>; tags each
+                release as <code class="inline">localscanner-v&lt;version&gt;</code>).
+                Releases are the permanent, expiry-free download
+                location for end users. The original
+                <code class="inline">.github/workflows/build-localscanner.yml</code>
+                still publishes per-commit dev builds as Actions
+                workflow-run artifacts. Each download ships a versioned
+                executable plus <code class="inline">BUILD_INFO.txt</code>
+                and <code class="inline">VERSION.txt</code> so an
+                operator can confirm the exact build from the file name
+                and a single log line.
             </p>
         </section>
 
@@ -409,9 +422,12 @@ python -m web.app</pre>
                 <code class="inline">Executable:</code> line, you are running
                 an old executable &mdash; almost always a stale shortcut to a
                 previous <code class="inline">VoipScanner_Desktop</code>
-                folder. Delete the old folder, download the latest package
-                artifact, extract into a fresh folder, and launch the
-                versioned exe.
+                folder. Delete the old folder, download the latest
+                package zip from the
+                <a href="https://github.com/RyanDanielWillis/voip-health/releases/latest"
+                   target="_blank" rel="noopener noreferrer">GitHub
+                Releases page</a>, extract into a fresh folder, and
+                launch the versioned exe.
             </p>
             <h3>Captures fail to start</h3>
             <p>
