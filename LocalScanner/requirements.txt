@@ -1,0 +1,7 @@
+# Runtime dependencies for the VoIP Health Check desktop client.
+# The GUI uses Tkinter which ships with the standard CPython installer
+# on Windows — no third-party runtime deps are required for the basic
+# scan flow.
+#
+# Build-time only:
+pyinstaller>=6.0

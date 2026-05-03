@@ -1,0 +1,6 @@
+"""Allows ``python -m voipscan`` to launch the GUI."""
+
+from .ui import run
+
+if __name__ == "__main__":
+    run()

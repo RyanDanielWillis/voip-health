@@ -3,3 +3,10 @@ __pycache__/
 .env
 data/
 .DS_Store
+
+# LocalScanner build / runtime artifacts
+LocalScanner/build/
+LocalScanner/dist/
+LocalScanner/logs/
+LocalScanner/reports/
+LocalScanner/.venv/
