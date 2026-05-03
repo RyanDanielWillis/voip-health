@@ -575,3 +575,40 @@ label {
         padding: 5px 6px;
     }
 }
+
+/* Header Download button: blue, compact, aligned with theme toggle */
+.site-header .header-actions .download-button,
+.site-header .header-actions .cta-button.download-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 30px;
+    padding: 5px 10px;
+    border-radius: 6px;
+    background: var(--link);
+    color: #fff !important;
+    border: 1px solid var(--link);
+    box-shadow: none;
+    font-size: 0.85rem;
+    font-weight: 500;
+    line-height: 1.2;
+    white-space: nowrap;
+    text-decoration: none;
+}
+
+.site-header .header-actions .download-button:hover,
+.site-header .header-actions .cta-button.download-button:hover {
+    background: var(--link-hover);
+    border-color: var(--link-hover);
+    color: #fff !important;
+    text-decoration: none;
+}
+
+@media (max-width: 720px) {
+    .site-header .header-actions .download-button,
+    .site-header .header-actions .cta-button.download-button {
+        height: 29px;
+        padding: 5px 8px;
+        font-size: 0.82rem;
+    }
+}
