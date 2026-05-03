@@ -358,6 +358,63 @@ Example `upload.json`:
 When the server has no `VOIPSCAN_UPLOAD_TOKEN` set, the desktop client
 can leave its `token` blank too — uploads are accepted without auth.
 
+### Logs are *always* uploaded
+
+The desktop client now uploads the rolling `voipscan.log` file after
+**every** completion path:
+
+* Scan success — log is attached to the new server-side scan session.
+* Scan failure — log is shipped as a standalone artifact so support
+  can see what crashed.
+* Packet capture stop — log is shipped alongside the `.pcapng` /
+  evidence file (or by itself if neither was produced).
+
+This makes triage practical even when nothing else is uploadable.
+
+### Troubleshooting `HTTP 403` upload errors
+
+If the streaming log shows `Upload rejected by server (HTTP 403)` after
+a scan, walk through these in order:
+
+1. **Token mismatch.** If the server has `VOIPSCAN_UPLOAD_TOKEN` set,
+   the desktop must send the same value. Set it in
+   `%LOCALAPPDATA%\VoipScan\upload.json` (`{"token": "…"}`) or the
+   `VOIPSCAN_UPLOAD_TOKEN` environment variable. The Flask app actually
+   returns `401`, but a reverse proxy / WAF in front of it can
+   re-write that to `403`.
+2. **WAF / Cloudflare / nginx rule.** Some default rule sets reject
+   `POST` requests that come from a bare Python user-agent. The client
+   now identifies itself as `VoIPScan-LocalScanner/<version>`; whitelist
+   that UA on the proxy.
+3. **Endpoint mismatch.** Confirm the URL in `upload.json` ends at the
+   base (e.g. `https://voipscan.danielscience.com`), **not** at the
+   `/api/...` path — the client appends the path itself.
+4. **Body size.** Single artifact upload is capped at 25 MB by both
+   client and server. A larger pcap will return 413, not 403.
+
+The status line in the GUI now states which of these to check (e.g.
+"Upload rejected by server (HTTP 403). Check the upload token /
+endpoint URL — see %LOCALAPPDATA%/VoipScan/upload.json.").
+
+### Packet capture without Administrator rights
+
+Full PCAP capture on Windows requires Administrator + a preinstalled
+capture driver (Wireshark + Npcap, or `pktmon` from an Admin shell).
+Most field operators don't have that. **Start Packet Capture** now
+falls back automatically:
+
+1. Tries Wireshark `dumpcap` (with the SIP/RTP BPF filter).
+2. Tries Windows `pktmon`.
+3. If neither works (or the app isn't running as Administrator),
+   collects a **connection-evidence** file instead — a timestamped
+   text artifact with `netstat`, the route table, adapter config, ping
+   snapshots and `Test-NetConnection` results for the SIP/RTP-relevant
+   ports. Saved into `captures/` and uploaded like any other artifact.
+
+The evidence file is **not** a packet capture — it is the best
+non-admin diagnostic snapshot the OS will give us. For true PCAP,
+install Wireshark + Npcap and right-click → "Run as administrator".
+
 ## Run from source (dev)
 
 Requires Python 3.10+ on Windows (Tkinter ships with the official

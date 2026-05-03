@@ -104,3 +104,13 @@ def log_exception(message: str) -> None:
 def session_id() -> str:
     """Stable identifier for the current run — useful in report filenames."""
     return datetime.now().strftime("%Y%m%d_%H%M%S")
+
+
+def get_session_log_path():
+    """Path to the rolling ``voipscan.log`` file. Always upload-safe.
+
+    Used by the GUI's "always upload logs" path so a capture or a failed
+    scan can still ship a useful artifact even when no scan JSON / pcap
+    exists. The file is created lazily by ``init_logging``.
+    """
+    return paths.logs_dir() / "voipscan.log"

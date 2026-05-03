@@ -529,23 +529,34 @@ def _summarize_issues(report: ScanReport) -> tuple[list[Issue], list[str]]:
 
     # Port problems
     bad_ports = [p for p in report.port_tests if p.result not in ("open",)]
-    sip_blocked = [p for p in bad_ports if p.sip_alg_relevant]
+    # Confirmed blocks vs UDP-can't-tell. The plain-English summary
+    # only treats 'filtered'/'closed'/'error' as blocks; UDP
+    # 'open|filtered' is reported separately as informational.
+    confirmed_blocked = [p for p in bad_ports if p.result in ("filtered", "closed", "error")]
+    sip_blocked = [p for p in confirmed_blocked if p.sip_alg_relevant]
     if sip_blocked:
-        ports_short = sorted({p.port for p in sip_blocked})[:8]
+        # Build a per-port "TCP 5060" / "UDP 10000" list so the issue
+        # title and detail are unambiguous in the GUI summary.
+        port_descs = sorted({f"{p.protocol.upper()} {p.port}" for p in sip_blocked})
+        sample = ", ".join(port_descs[:10])
+        if len(port_descs) > 10:
+            sample += ", ..."
         issues.append(Issue(
             code="voice_ports_blocked",
-            title="Voice-related ports look blocked or filtered",
+            title=f"Voice-related ports are blocked: {sample}",
             severity="critical",
             confidence="strong" if any(p.confidence == "confirmed" for p in sip_blocked) else "likely",
             detail=(
-                f"{len(sip_blocked)} probes returned non-open results on "
-                f"voice-relevant ports (sample: {', '.join(map(str, ports_short))})."
+                f"{len(sip_blocked)} of the voice-related ports we tested "
+                "are not reachable from this PC. Calls and registration "
+                "depend on these ports — if the firewall blocks them, "
+                "phones either won't register or audio will be one-way."
             ),
             suggested_fix=(
                 "Allow outbound TCP 2160/5060/5061/5222/443 and UDP "
                 "10000-65000 to 199.15.180.0/22 on the firewall."
             ),
-            related_ports=ports_short,
+            related_ports=sorted({p.port for p in sip_blocked})[:16],
         ))
         fixes.append("Open Sangoma's voice ports outbound (see report for list).")
 
@@ -655,18 +666,29 @@ def run_evidence_scan(
     on_log: Callable[[str], None],
     use_nmap: bool = True,
     cancel_event: threading.Event | None = None,
+    profile: str = "quick",
 ) -> ScanReport:
-    """Top-level scan. Streams progress via ``on_log`` and returns a report."""
+    """Top-level scan. Streams progress via ``on_log`` and returns a report.
+
+    ``profile`` selects between Quick Scan ("quick", default) and
+    Advanced Scan ("advanced"). Quick stays bounded — Sangoma port
+    catalog, short ping run, optional nmap pass. Advanced does the same
+    plus a deeper SIP/RTP port sweep, longer latency sampling, and a
+    service-version nmap pass when nmap is available.
+    """
+    profile = profile if profile in ("quick", "advanced") else "quick"
     log = get_logger()
     started = time.time()
     report = ScanReport()
     report.form = form
+    report.profile = profile
     report.app = "VoIP Health Check"
     report.session_id = paths.app_root().name + "-" + utcnow_iso().replace(":", "")
     report.started_at = utcnow_iso()
     report.sangoma_catalog = sangoma_ports.catalog_as_dict()
 
-    on_log("[scan] === Evidence scan starting ===")
+    label = "Quick Scan" if profile == "quick" else "Advanced Scan"
+    on_log(f"[scan] === {label} starting ===")
 
     # 0. Record what the operator supplied vs what we'll auto-detect.
     resolved = ResolvedInputs()
@@ -794,6 +816,7 @@ def run_evidence_scan(
             user_overrides=overrides,
             on_log=on_log,
             catalog=sangoma_ports.PORT_CATALOG,
+            deep_sweep=(profile == "advanced"),
         )
     except Exception:
         log_exception("port tests failed")
@@ -819,10 +842,17 @@ def run_evidence_scan(
             if not targets:
                 on_log("[scan] No nmap targets available — skipping nmap pass.")
             else:
-                profile = build_targeted_profile(targets)
-                on_log(f"[scan] Optional nmap pass against {targets}")
+                if profile == "advanced":
+                    nmap_profile = build_targeted_profile(targets)
+                    on_log(
+                        f"[scan] Advanced Scan: deeper nmap pass with "
+                        f"service version detection against {targets}"
+                    )
+                else:
+                    nmap_profile = build_targeted_profile(targets)
+                    on_log(f"[scan] Optional nmap pass against {targets}")
                 nmap_result = run_nmap_profile(
-                    profile, on_line=on_log, cancel_event=cancel_event
+                    nmap_profile, on_line=on_log, cancel_event=cancel_event
                 )
                 report.nmap_runs.append(nmap_result)
                 porttests.merge_nmap_evidence(
@@ -863,14 +893,21 @@ def run_evidence_scan(
         log_exception("capture detection failed")
 
     # 7b. Latency / jitter / packet loss (ICMP ping)
+    # Advanced Scan triples the ping count so jitter/loss numbers settle
+    # for slower networks. Quick Scan keeps the bounded default.
     on_log("[scan] Measuring latency, jitter and packet loss...")
     try:
         gw_for_ping = (form.gateway_ip or report.gateway.default_gateway or "").strip()
         sangoma_host = (form.starbox_ip or sangoma_ports.DEFAULT_SANGOMA_HOST).strip()
+        latency_count = (
+            latency_mod.DEFAULT_COUNT * 3 if profile == "advanced"
+            else latency_mod.DEFAULT_COUNT
+        )
         latency_summary = latency_mod.run_latency_tests(
             gateway=gw_for_ping,
             sangoma_host=sangoma_host,
             on_log=on_log,
+            count=latency_count,
         )
         report.latency = LatencyEvidence(
             targets=[
@@ -919,7 +956,7 @@ def run_evidence_scan(
     report.finished_at = utcnow_iso()
     report.duration_seconds = round(time.time() - started, 2)
     on_log(
-        f"[scan] === Evidence scan finished in "
+        f"[scan] === {label} finished in "
         f"{report.duration_seconds:.1f}s ==="
     )
     return report

@@ -41,15 +41,15 @@ from .logger import get_logger, log_exception
 from .report import FormInputs, ScanReport
 
 # ---- Theme ---------------------------------------------------------------
-# Light, modern palette. The window sits on a soft off-white wash, with
-# white "card" surfaces, a teal primary accent, and quiet grey borders so
-# the UI reads as a professional clinical tool rather than a terminal.
-BG = "#f4f6fa"           # page background (very light, easy on the eyes)
+# Light grey palette — the operator asked for the scanner GUI to use a
+# light grey background. Cards stay white so the layout still reads as a
+# professional clinical tool rather than a flat console.
+BG = "#e6e8eb"           # page background — light grey
 SURFACE = "#ffffff"      # card surface
-SURFACE_2 = "#f7f9fc"    # subtle secondary surface (log pane, optional card body)
-SURFACE_HOVER = "#eef1f7"
-BORDER = "#dde2eb"
-BORDER_STRONG = "#c7cdda"
+SURFACE_2 = "#f1f3f5"    # subtle secondary surface (log pane, optional card body)
+SURFACE_HOVER = "#dee1e5"
+BORDER = "#c7cdd4"
+BORDER_STRONG = "#9aa3ad"
 TEXT = "#1c2230"         # near-black primary text
 TEXT_MUTED = "#5b6473"
 ACCENT = "#0f8a8a"        # teal primary
@@ -459,13 +459,15 @@ class VoipScanApp:
         row = ttk.Frame(self.root, style="TFrame")
         row.pack(fill="x", padx=24, pady=(16, 14))
 
-        # All buttons on this row share equal sizing and spacing so the
-        # layout stays balanced even as labels change ("Start" vs "Stop").
+        # Top row hosts Quick Scan + the packet capture controls. The
+        # bigger Advanced Scan button lives on its own row at the bottom
+        # of the window so the operator sees a clear "do more" option
+        # after they've reviewed Quick Scan output.
         self.btn_quick = ttk.Button(
             row,
-            text="Run Evidence Scan",
+            text="Quick Scan",
             style="Primary.TButton",
-            command=self._on_evidence_scan,
+            command=self._on_quick_scan,
             width=22,
         )
         self.btn_quick.pack(side="left", padx=(0, 12))
@@ -607,15 +609,9 @@ class VoipScanApp:
             hint="leave blank to skip external SIP probes; ALG proof will be limited",
         )
 
-        scan_row = ttk.Frame(card, style="Surface.TFrame")
-        scan_row.pack(fill="x", pady=(10, 0))
-        self.btn_scan_now = ttk.Button(
-            scan_row,
-            text="Scan Now (Advanced is optional)",
-            style="Primary.TButton",
-            command=self._on_scan_now,
-        )
-        self.btn_scan_now.pack(side="left")
+        # No "Scan Now" button here — Quick Scan lives at the top, and
+        # Run Advanced Scan lives in its own row at the bottom of the
+        # window so the two profiles are clearly separated.
 
     def _ip_field(
         self,
@@ -744,6 +740,31 @@ class VoipScanApp:
         self.summary_view.pack(fill="both", expand=True)
 
     def _build_footer(self) -> None:
+        # Big bottom CTA — Run Advanced Scan. Sits on its own row so
+        # operators see a clear "go deeper" option separate from Quick
+        # Scan at the top.
+        adv_row = ttk.Frame(self.root, style="TFrame")
+        adv_row.pack(fill="x", padx=24, pady=(0, 8))
+        self.btn_advanced_scan = ttk.Button(
+            adv_row,
+            text="Run Advanced Scan",
+            style="Primary.TButton",
+            command=self._on_advanced_scan,
+            width=24,
+        )
+        self.btn_advanced_scan.pack(side="left")
+        ttk.Label(
+            adv_row,
+            text=(
+                "Advanced runs every Quick Scan check plus a deeper SIP/RTP "
+                "port sweep, longer latency sampling, and (when nmap is "
+                "available) a service-version probe."
+            ),
+            style="MutedBg.TLabel",
+            wraplength=620,
+            justify="left",
+        ).pack(side="left", padx=(12, 0))
+
         row = ttk.Frame(self.root, style="TFrame")
         row.pack(fill="x", padx=24, pady=(0, 18))
 
@@ -794,7 +815,7 @@ class VoipScanApp:
         # Capture button intentionally stays enabled so the user can
         # start/stop a packet capture while a scan is running.
         state = "disabled" if busy else "normal"
-        for btn in (self.btn_quick, self.btn_scan_now):
+        for btn in (self.btn_quick, self.btn_advanced_scan):
             btn.configure(state=state)
         if status:
             self.lbl_status.configure(text=status)
@@ -806,11 +827,11 @@ class VoipScanApp:
                 self.lbl_status.configure(text="Idle.")
 
     # -- Action handlers --------------------------------------------------
-    def _on_evidence_scan(self) -> None:
-        self._run_evidence(self._collect_form())
+    def _on_quick_scan(self) -> None:
+        self._run_evidence(self._collect_form(), profile="quick")
 
-    def _on_scan_now(self) -> None:
-        self._run_evidence(self._collect_form())
+    def _on_advanced_scan(self) -> None:
+        self._run_evidence(self._collect_form(), profile="advanced")
 
     def _set_capture_buttons(self, running: bool) -> None:
         """Toggle Start/Stop button enabled-state based on capture status."""
@@ -836,8 +857,10 @@ class VoipScanApp:
             messagebox.showerror(
                 __app_name__,
                 f"Packet capture could not start: {e}\n\n"
-                "If this looks like a permissions issue, try running the "
-                "app as Administrator. dumpcap also requires Npcap.",
+                "Full PCAP capture needs Wireshark + Npcap and Administrator "
+                "rights. The non-admin connection-evidence fallback should "
+                "still work — try again, or restart the app as Administrator "
+                "for true PCAP.",
             )
             return
         self._capture_session = session
@@ -860,40 +883,57 @@ class VoipScanApp:
         self._set_capture_buttons(running=False)
         self.lbl_status.configure(text="Idle.")
         self._capture_session = None
-        if result is None:
-            return
-        for note in result.notes:
-            self._enqueue(f"[capture] {note}")
-        if result.output_files:
-            files = ", ".join(p.name for p in result.output_files)
-            self._enqueue(
-                f"[capture] Capture stopped — saved file(s): {files} "
-                f"in {result.output_files[0].parent}"
-            )
-            self._upload_capture(result)
-        else:
-            self._enqueue(
-                "[capture] Capture stopped — no output file was produced. "
-                "Check that the app has permission to capture packets."
-            )
+        if result is not None:
+            for note in result.notes:
+                self._enqueue(f"[capture] {note}")
+            if result.output_files:
+                files = ", ".join(p.name for p in result.output_files)
+                self._enqueue(
+                    f"[capture] Capture stopped — saved file(s): {files} "
+                    f"in {result.output_files[0].parent}"
+                )
+                self._upload_capture(result)
+            else:
+                self._enqueue(
+                    "[capture] Capture stopped — no PCAP file was produced. "
+                    "If you need full packet capture, run as Administrator "
+                    "with Npcap/Wireshark installed; otherwise the "
+                    "non-admin evidence file (saved separately) is the "
+                    "best the OS can give us."
+                )
 
-    def _run_evidence(self, form: FormInputs) -> None:
+        # Always ship the rolling log on capture stop. This is the user's
+        # explicit ask: even if the capture produced nothing, the log
+        # alone is enough to confirm what happened on the VPS dashboard.
+        try:
+            self._upload_log_only(
+                "packet capture",
+                logger.get_session_log_path(),
+            )
+        except Exception:
+            log_exception("post-capture log upload failed")
+
+    def _run_evidence(self, form: FormInputs, profile: str = "quick") -> None:
         if self._scan_thread and self._scan_thread.is_alive():
             messagebox.showinfo(__app_name__, "A scan is already running. Please wait.")
             return
+        profile = profile if profile in ("quick", "advanced") else "quick"
+        label = "Quick Scan" if profile == "quick" else "Advanced Scan"
         # Switch to streaming text view for the duration of the scan.
         self._show_text_view()
-        self._set_busy(True, "Running evidence scan...")
+        self._set_busy(True, f"Running {label}...")
         self._cancel_event = threading.Event()
 
         def worker() -> None:
             report: Optional[ScanReport] = None
+            log_path: Optional[Path] = None
             try:
                 report = scanner.run_evidence_scan(
                     form=form,
                     on_log=self._enqueue,
                     use_nmap=True,
                     cancel_event=self._cancel_event,
+                    profile=profile,
                 )
                 report.app_version = __version__
                 self._last_report = report
@@ -907,6 +947,16 @@ class VoipScanApp:
             except Exception as e:
                 log_exception("Evidence scan failed")
                 self._enqueue(f"[error] {e}")
+                # Even when the scan blew up we still want to ship the
+                # log file we managed to write to disk so support can see
+                # what happened. The helper is best-effort and never raises.
+                try:
+                    if log_path is None:
+                        log_path = self._save_failed_run_log(label, e)
+                        self._last_log_path = log_path
+                    self._upload_log_only(label, log_path, error=str(e))
+                except Exception:
+                    log_exception("post-failure log upload failed")
                 messagebox.showerror(
                     __app_name__,
                     f"Unexpected error during scan. See logs/voipscan.log.",
@@ -1141,6 +1191,34 @@ class VoipScanApp:
         return text
 
     # -- VPS upload -------------------------------------------------------
+    def _format_upload_error(self, result: dict) -> str:
+        """Human-friendly one-liner for upload failures.
+
+        Keeps the GUI status line short while making 401/403 unambiguous
+        — the user reported that the previous wording made it hard to
+        tell whether the server rejected the request or the network just
+        timed out.
+        """
+        status = result.get("status_code")
+        msg = result.get("message") or ""
+        if status in (401, 403):
+            return (
+                f"Upload rejected by server (HTTP {status}). "
+                "Check the upload token / endpoint URL — see "
+                "%LOCALAPPDATA%/VoipScan/upload.json."
+            )
+        if status and status >= 400:
+            return f"Server returned HTTP {status}. {msg}".strip()
+        if msg:
+            return msg
+        return "upload failed (no further detail)"
+
+    def _set_status(self, text: str) -> None:
+        try:
+            self.lbl_status.configure(text=text)
+        except Exception:
+            pass
+
     def _upload_scan(self, report: ScanReport, log_path: Optional[Path]) -> None:
         """Best-effort: send the structured scan + log to the dashboard.
 
@@ -1154,22 +1232,37 @@ class VoipScanApp:
         except Exception as e:
             log_exception("upload_scan_session crashed")
             self._enqueue(f"[upload] failed: {e}")
+            self._set_status(f"Upload failed: {e}")
             return
         if result.get("ok"):
             sid = result.get("session_id") or ""
             self._server_session_id = sid or None
+            artifacts = result.get("artifact_ids") or []
+            log_note = " (log attached)" if artifacts else " (log upload skipped/failed)"
             self._enqueue(
                 f"[upload] Scan uploaded successfully (server session "
-                f"{sid or '?'})."
+                f"{sid or '?'}){log_note}."
             )
+            self._set_status(f"Uploaded — server session {sid or '?'}.")
         else:
-            msg = result.get("message") or result.get("server") or "upload failed"
-            self._enqueue(f"[upload] Scan upload skipped/failed: {msg}")
+            short = self._format_upload_error(result)
+            self._enqueue(f"[upload] Scan upload failed: {short}")
+            self._set_status(f"Upload failed: {short}")
+            # Even when the JSON ingest failed we still try to ship the
+            # raw log as a standalone artifact so support can diagnose.
+            if log_path is not None and log_path.exists():
+                self._upload_log_only("scan", log_path, error=short)
 
     def _upload_capture(self, result: "capture.CaptureResult") -> None:
         try:
             url = upload_mod.get_vps_url()
-            for f in result.output_files:
+            files = list(result.output_files)
+            if not files:
+                self._enqueue(
+                    "[upload] No capture file produced — uploading capture "
+                    "log only."
+                )
+            for f in files:
                 self._enqueue(
                     f"[upload] Sending capture {f.name} to {url} ..."
                 )
@@ -1182,13 +1275,71 @@ class VoipScanApp:
                 if resp.get("ok"):
                     self._enqueue(f"[upload] Capture {f.name} uploaded.")
                 else:
+                    short = self._format_upload_error(resp)
                     self._enqueue(
-                        f"[upload] Capture {f.name} not uploaded: "
-                        f"{resp.get('message') or resp.get('server')}"
+                        f"[upload] Capture {f.name} not uploaded: {short}"
                     )
+                    self._set_status(f"Capture upload failed: {short}")
         except Exception as e:
             log_exception("capture upload crashed")
             self._enqueue(f"[upload] capture upload failed: {e}")
+            self._set_status(f"Capture upload failed: {e}")
+
+    def _upload_log_only(
+        self,
+        label: str,
+        log_path: Path,
+        *,
+        error: str = "",
+    ) -> None:
+        """Always-on log uploader — runs after scans, captures, or failures.
+
+        The user reported that scan results, captures and logs sometimes
+        all silently failed. Logs are the smallest, most reliable
+        artifact, so we ship them on every completion path. The capture
+        endpoint accepts ``.txt``/``.log`` files which is exactly what
+        the local rolling log is, so we reuse it.
+        """
+        try:
+            if not log_path.exists():
+                self._enqueue(f"[upload] No log file at {log_path} — skipping.")
+                return
+            url = upload_mod.get_vps_url()
+            self._enqueue(f"[upload] Sending {label} log to {url} ...")
+            resp = upload_mod.upload_log_artifact(
+                log_path,
+                session_id=self._server_session_id,
+                notes=f"{label} log; error={error[:200]}" if error else label,
+            )
+            if resp.get("ok"):
+                self._enqueue(f"[upload] {label} log uploaded.")
+            else:
+                short = self._format_upload_error(resp)
+                self._enqueue(f"[upload] {label} log upload failed: {short}")
+                self._set_status(f"Log upload failed: {short}")
+        except Exception as e:
+            log_exception("log-only upload crashed")
+            self._enqueue(f"[upload] {label} log upload crashed: {e}")
+
+    def _save_failed_run_log(self, label: str, error: Exception) -> Path:
+        """Dump the streaming buffer to disk when the scan blew up.
+
+        Used as a last resort so the always-on log uploader still has
+        something to send. Never raises.
+        """
+        try:
+            log_dir = paths.logs_dir()
+            ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+            path = log_dir / f"voipscan_{label.lower().replace(' ', '_')}_failed_{ts}.log"
+            with path.open("w", encoding="utf-8") as f:
+                f.write(f"{__app_name__} v{__version__}\n")
+                f.write(f"{label} aborted with error: {error}\n\n")
+                f.write("=== STREAMING LOG ===\n")
+                f.write(self._buffer_text())
+            return path
+        except Exception:
+            log_exception("Could not write failure log")
+            return paths.logs_dir() / "voipscan_failed.log"
 
     def _on_clear(self) -> None:
         self.txt_results.configure(state="normal")

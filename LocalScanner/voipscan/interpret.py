@@ -76,12 +76,27 @@ def _network_section(report: ScanReport) -> Section:
 
 
 def _vlan_section(report: ScanReport) -> Section:
+    vid = report.vlan.target_vlan
     if report.vlan.status == "confirmed":
-        status, summary = "OK", f"VLAN {report.vlan.target_vlan} appears to be tagged on this connection."
+        status = "OK"
+        summary = (
+            f"This PC looks like it's on the voice VLAN ({vid}). That's "
+            "the right network for IP phones."
+        )
     elif report.vlan.status == "not_detected":
-        status, summary = "WARN", f"VLAN {report.vlan.target_vlan} was not detected on this PC."
+        status = "WARN"
+        summary = (
+            f"We could not see VLAN {vid} on this connection. If the IP "
+            "phone here is meant to use the voice VLAN, the switch port "
+            "may be misconfigured."
+        )
     else:
-        status, summary = "UNK", f"VLAN {report.vlan.target_vlan} state is inconclusive — read evidence below."
+        status = "UNK"
+        summary = (
+            f"VLAN {vid} could not be confirmed from this PC. Windows "
+            "often hides VLAN tags from user-mode tools — see the evidence "
+            "below."
+        )
 
     bullets = [f"Confidence: {_confidence_label(report.vlan.confidence)}"]
     bullets.extend(report.vlan.evidence)
@@ -100,11 +115,24 @@ def _vlan_section(report: ScanReport) -> Section:
 def _sipalg_section(report: ScanReport) -> Section:
     sip = report.sip_alg
     if sip.overall == "likely_on":
-        status, summary = "BAD", "SIP ALG is likely interfering with VoIP traffic."
+        status = "BAD"
+        summary = (
+            "Your router/firewall appears to have SIP ALG turned ON. SIP "
+            "ALG is well known for breaking VoIP — it can rewrite call "
+            "headers and cause one-way audio or dropped calls."
+        )
     elif sip.overall == "likely_off":
-        status, summary = "OK", "Multiple checks suggest SIP ALG is OFF or not interfering."
+        status = "OK"
+        summary = (
+            "SIP ALG looks switched off — that's the right setting for "
+            "Sangoma Business Voice."
+        )
     else:
-        status, summary = "UNK", "SIP ALG state could not be determined from this client alone."
+        status = "UNK"
+        summary = (
+            "We couldn't tell from this PC alone whether SIP ALG is on or "
+            "off. A capture next to the firewall is the next step."
+        )
 
     bullets = [f"Overall: {_confidence_label(sip.confidence)} ({sip.overall})"]
     for m in sip.methods:
@@ -130,41 +158,96 @@ def _sipalg_section(report: ScanReport) -> Section:
 def _ports_section(report: ScanReport) -> Section:
     total = len(report.port_tests)
     bad = [p for p in report.port_tests if p.result not in ("open",)]
-    voice_bad = [p for p in bad if p.sip_alg_relevant]
+    # Treat "filtered" / "closed" / "error" as confidently blocked.
+    # "open|filtered" is the UDP-can't-tell case, which we list separately
+    # so the operator can read the report without thinking it is a hard
+    # block.
+    blocked = [p for p in bad if p.result in ("filtered", "closed", "error")]
+    udp_unclear = [p for p in bad if p.result == "open|filtered"]
+    voice_blocked = [p for p in blocked if p.sip_alg_relevant]
 
     if total == 0:
         return Section(
             key="ports",
-            title="Sangoma Port Reachability",
+            title="Port reachability — what got through",
             status="UNK",
-            summary="Port tests did not run.",
+            summary="No port tests ran on this scan.",
         )
     if not bad:
-        status, summary = "OK", f"All {total} sampled ports succeeded."
-    elif voice_bad:
-        status = "BAD"
+        status = "OK"
         summary = (
-            f"{len(voice_bad)} of {total} voice-related ports look blocked or filtered."
+            f"Good news — every one of the {total} ports we tested was open. "
+            "Nothing on the path is blocking VoIP traffic from this PC."
+        )
+    elif voice_blocked:
+        status = "BAD"
+        names = sorted({f"{p.protocol.upper()} {p.port}" for p in voice_blocked})
+        sample = ", ".join(names[:6]) + (" ..." if len(names) > 6 else "")
+        summary = (
+            f"{len(voice_blocked)} voice-related port(s) are blocked: {sample}. "
+            "Voice traffic on those ports is being stopped before it reaches "
+            "the Sangoma cloud."
+        )
+    elif blocked:
+        status = "WARN"
+        names = sorted({f"{p.protocol.upper()} {p.port}" for p in blocked})
+        sample = ", ".join(names[:6]) + (" ..." if len(names) > 6 else "")
+        summary = (
+            f"{len(blocked)} non-voice port(s) are blocked: {sample}. "
+            "Voice should still work, but other Sangoma services on those "
+            "ports won't."
         )
     else:
-        status = "WARN"
-        summary = f"{len(bad)} of {total} non-voice ports were not open."
-
-    bullets = _format_port_groups(report.port_tests)
-    fixes: list[str] = []
-    if voice_bad:
-        fixes.append(
-            "Allow outbound TCP 2160/5060/5061/5222/443 and UDP 10000-65000 "
-            "to 199.15.180.0/22 on the firewall (per Sangoma's port guide)."
+        status = "INFO"
+        summary = (
+            "All confirmed checks passed. A few UDP ports could not be "
+            "confirmed open without a live responder — that's normal."
         )
-    if any(p.protocol.lower() == "udp" for p in bad):
+
+    bullets: list[str] = []
+    if blocked:
+        # Plain-English, explicit list of what is blocked. This is the
+        # exact information the operator asked for: which ports are
+        # blocked, and what the protocol is.
+        bullets.append("Blocked ports (in plain English):")
+        for p in blocked[:20]:
+            destination = p.destination or "the test target"
+            bullets.append(
+                f"  • {p.protocol.upper()} port {p.port} to {destination} "
+                f"({p.service}) — {p.result}. {p.evidence}"
+            )
+        if len(blocked) > 20:
+            bullets.append(f"  ...and {len(blocked) - 20} more blocked ports.")
+    else:
+        bullets.append("No blocked ports were detected.")
+
+    if udp_unclear:
+        bullets.append("")
+        bullets.append(
+            f"{len(udp_unclear)} UDP port(s) were 'silent' — no reply was "
+            "received in the timeout window. UDP can't be declared open "
+            "from this PC alone without a live responder, so this is "
+            "informational, not a confirmed block."
+        )
+
+    bullets.append("")
+    bullets.append("Full per-group breakdown:")
+    bullets.extend(_format_port_groups(report.port_tests))
+
+    fixes: list[str] = []
+    if voice_blocked:
         fixes.append(
-            "Open UDP RTP range. UDP 'open|filtered' is normal without a "
-            "responding endpoint — re-test against a known live SIP echo."
+            "Ask the firewall admin to allow outbound TCP 2160/5060/5061/5222/443 "
+            "and UDP 10000-65000 to 199.15.180.0/22 (Sangoma's published range)."
+        )
+    if any(p.protocol.lower() == "udp" for p in blocked):
+        fixes.append(
+            "Open the UDP RTP range outbound. RTP audio packets ride that "
+            "range — if the firewall blocks it, calls connect but go silent."
         )
     return Section(
         key="ports",
-        title="Sangoma Port Reachability",
+        title="Port reachability — what got through",
         status=status,
         summary=summary,
         bullets=bullets,
@@ -256,7 +339,27 @@ def _latency_section(report: ScanReport) -> Section:
 
     status_map = {"ok": "OK", "warn": "WARN", "bad": "BAD", "unknown": "UNK"}
     status = status_map.get(lat.overall_status, "UNK")
+    plain_summary_map = {
+        "ok": (
+            "Latency, jitter and packet loss are all within the comfort "
+            "range for clear VoIP calls."
+        ),
+        "warn": (
+            "Latency or jitter is borderline. Calls will probably work, "
+            "but expect occasional choppy audio if the network gets busier."
+        ),
+        "bad": (
+            "Latency, jitter or packet loss is outside the comfort range "
+            "for VoIP. Expect choppy or one-way audio until this is fixed."
+        ),
+        "unknown": (
+            "Latency could not be measured — no targets responded to ping."
+        ),
+    }
+    plain_summary = plain_summary_map.get(lat.overall_status, lat.overall_summary)
     bullets: list[str] = []
+    if lat.overall_summary and lat.overall_summary != plain_summary:
+        bullets.append(lat.overall_summary)
     for t in lat.targets:
         if t.samples_received:
             bullets.append(
@@ -283,9 +386,9 @@ def _latency_section(report: ScanReport) -> Section:
         )
     return Section(
         key="latency",
-        title="Latency, Jitter & Packet Loss",
+        title="Latency, jitter & packet loss",
         status=status,
-        summary=lat.overall_summary or "Latency snapshot collected.",
+        summary=plain_summary or "Latency snapshot collected.",
         bullets=bullets,
         fixes=list(lat.suggestions),
     )
@@ -339,15 +442,16 @@ def _dhcp_section(report: ScanReport) -> Section:
         bullets.append(f"...and {len(d.adapters) - 6} more adapter(s)")
     for limit in d.limitations:
         bullets.append(f"Limitation: {limit}")
+    plain_summary = (
+        f"This PC is getting its IP address from {d.inferred_assigner}."
+        if d.inferred_assigner != "unknown"
+        else "We could not tell which device is handing out IP addresses."
+    )
     return Section(
         key="dhcp",
-        title="DHCP / IP Assignment",
+        title="DHCP / IP address assignment",
         status=status,
-        summary=(
-            f"IP appears to be assigned by: {d.inferred_assigner}"
-            if d.inferred_assigner != "unknown"
-            else "IP assignment source could not be inferred."
-        ),
+        summary=plain_summary,
         bullets=bullets,
         fixes=list(d.suggestions),
     )
@@ -375,24 +479,32 @@ def _capture_section(report: ScanReport) -> Section:
 
 def _summary_section(report: ScanReport) -> Section:
     issues = report.issues
+    profile_note = (
+        "Advanced Scan profile" if getattr(report, "profile", "quick") == "advanced"
+        else "Quick Scan profile"
+    )
     if not issues:
         return Section(
             key="summary",
-            title="Summary",
+            title="Overall summary",
             status="OK",
-            summary="No issues identified.",
+            summary=f"{profile_note}. No issues identified — the network "
+                    "looks healthy for VoIP from this PC.",
         )
     crit = sum(1 for i in issues if i.severity == "critical")
     warn = sum(1 for i in issues if i.severity == "warning")
     if crit:
         status = "BAD"
-        summary = f"{crit} critical issue(s), {warn} warning(s)."
+        summary = (
+            f"{profile_note}. {crit} critical issue(s) need attention, "
+            f"plus {warn} warning(s)."
+        )
     elif warn:
         status = "WARN"
-        summary = f"{warn} warning(s) found."
+        summary = f"{profile_note}. {warn} warning(s) — review below."
     else:
         status = "INFO"
-        summary = "Informational findings only."
+        summary = f"{profile_note}. Informational findings only."
 
     bullets = []
     for i in issues:
@@ -405,7 +517,7 @@ def _summary_section(report: ScanReport) -> Section:
             bullets.append(f"   Fix: {i.suggested_fix}")
     return Section(
         key="summary",
-        title="Summary & Recommended Fixes",
+        title="Overall summary & recommended fixes",
         status=status,
         summary=summary,
         bullets=bullets,

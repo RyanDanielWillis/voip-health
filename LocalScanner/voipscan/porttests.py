@@ -165,6 +165,27 @@ def _expand(rule: PortRule, group_name: str, user_overrides: dict[str, str]) -> 
         )
 
 
+def _ports_for_rule(rule: PortRule, deep_sweep: bool) -> list[int]:
+    """Return the port list to probe for this rule.
+
+    In Advanced Scan we expand the sweep for the SIP/RTP rules so the
+    operator gets evidence on more of the published range. We are still
+    cautious: the RTP range is huge (10000–65000) so we only add a
+    handful more sample points rather than scanning the full range.
+    """
+    if not deep_sweep:
+        return list(rule.sample_ports)
+    extras: list[int] = []
+    if rule.service in ("RTP", "RTP/RTCP", "RTC", "Application Framework Video"):
+        extras.extend([15000, 25000, 35000, 45000, 55000])
+    if rule.service == "SIP":
+        extras.extend([5061, 5160, 5161])
+    if rule.service in ("HTTPS", "Web"):
+        extras.extend([8088, 8089, 8443])
+    merged = list(dict.fromkeys(list(rule.sample_ports) + extras))
+    return merged
+
+
 def run_port_tests(
     *,
     user_overrides: dict[str, str],
@@ -172,8 +193,15 @@ def run_port_tests(
     catalog: list[PortGroup],
     use_nmap: bool = False,
     nmap_path: str | None = None,
+    deep_sweep: bool = False,
 ) -> list[PortTestResult]:
-    """Probe every sample port and return the populated results."""
+    """Probe every sample port and return the populated results.
+
+    ``deep_sweep`` is set by Advanced Scan; it expands the RTP and
+    SIP-relevant rules with a few extra sample ports so coverage is
+    materially better than Quick Scan without exploding into a full
+    UDP RTP range scan.
+    """
     log = get_logger()
     results: list[PortTestResult] = []
     started = time.time()
@@ -182,7 +210,7 @@ def run_port_tests(
         on_log(f"[ports] === {group.name} ===")
         for rule in group.rules:
             host = _pick_destination(rule, user_overrides)
-            for port in rule.sample_ports:
+            for port in _ports_for_rule(rule, deep_sweep):
                 pr = PortTestResult(
                     group=group.name,
                     service=rule.service,

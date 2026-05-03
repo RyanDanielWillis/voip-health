@@ -256,6 +256,11 @@ class ScanReport:
     schema_version: str = "1.0"
     app: str = ""
     app_version: str = ""
+    # Scan profile that produced this report. ``"quick"`` is the
+    # default, ``"advanced"`` corresponds to the bottom Run Advanced Scan
+    # button — deeper port sweep, longer latency sampling, and a
+    # service-version nmap pass when nmap is available.
+    profile: str = "quick"
     session_id: str = ""
     started_at: str = field(default_factory=utcnow_iso)
     finished_at: str = ""

@@ -82,7 +82,7 @@
                     (<code class="inline">VoIPHealthCheck-2.2.0.exe</code>) so
                     the file name itself confirms which build you are
                     running.</li>
-                <li>Click <strong>Run Evidence Scan</strong>. When the scan
+                <li>Click <strong>Quick Scan</strong>. When the scan
                     finishes the GUI switches to a plain-English summary, the
                     raw log is written to disk, and the report is uploaded to
                     this dashboard.</li>
@@ -109,14 +109,14 @@ python -m web.app</pre>
             <h2>Desktop client</h2>
             <p>
                 The Windows GUI is a Tkinter / ttk app organised around three
-                cards: <strong>Run Evidence Scan</strong>, an
+                cards: <strong>Quick Scan</strong>, an
                 <strong>Optional</strong> details panel, and a
                 <strong>Scan Results / Log</strong> pane that swaps between a
                 streaming log and a plain-English summary when the scan
                 completes.
             </p>
             <ul>
-                <li><strong>Run Evidence Scan</strong> &mdash; primary one-click
+                <li><strong>Quick Scan</strong> &mdash; primary one-click
                     scan. Auto-detects the gateway, runs the diagnostics
                     pipeline, generates a <code class="inline">ScanReport</code>,
                     saves a raw log, and uploads to the dashboard.</li>
@@ -129,8 +129,10 @@ python -m web.app</pre>
                     Remote Phone), Gateway IP, Firewall IP, Starbox IP, and an
                     optional SIP test endpoint. Every field is optional and is
                     auto-detected or skipped cleanly when blank.</li>
-                <li><strong>Scan Now</strong> &mdash; runs the same evidence
-                    pipeline but consumes the values entered in Advanced.</li>
+                <li><strong>Run Advanced Scan</strong> &mdash; the bottom button
+                    runs every Quick Scan check plus a deeper SIP/RTP port
+                    sweep, longer latency sampling, and a service-version
+                    nmap pass when nmap is available.</li>
                 <li><strong>Download Results / Show Raw Log / Show Summary</strong>
                     &mdash; export the report as JSON or text, or toggle
                     between the streaming log and the summary view.</li>
