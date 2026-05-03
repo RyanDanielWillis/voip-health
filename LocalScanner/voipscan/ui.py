@@ -1,31 +1,16 @@
 """Tkinter desktop GUI.
 
-Layout overview:
+Two phases:
 
-    +--------------------------------------------------------------+
-    | [logo]  VoIP Health Check                                    |
-    |--------------------------------------------------------------|
-    | [ Quick Scan ]      [ Start Packet Capture ]                 |
-    |                                                              |
-    | +-- Optional: --------------------------------------------+  |
-    | | Problem Experienced: [dropdown]                         |  |
-    | | Do you have a different problem?  [text]                |  |
-    | | v Advanced                                              |  |
-    | |    Hosted Platform: ( ) On-Prem ( ) Cloud Only ...      |  |
-    | |    Gateway IP: [...]  Firewall IP: [...]                |  |
-    | |    Starbox IP: [...]                                    |  |
-    | | [ Scan Now ]                                            |  |
-    | +---------------------------------------------------------+  |
-    |                                                              |
-    | Results / Log                                                |
-    | +---------------------------------------------------------+  |
-    | |                                                         |  |
-    | +---------------------------------------------------------+  |
-    | [ Download Results ]                            [ Clear ]    |
-    +--------------------------------------------------------------+
+* **During scan** — the Results / Log box streams technical log lines
+  the same way the legacy build did.
+* **After scan completes** — the raw log is saved to disk, the box is
+  cleared, and a plain-English interpretation of the structured
+  ``ScanReport`` is rendered in its place. Each section has a colored
+  status badge drawn with a Tk Canvas (no external assets required).
 
-The widgets, labels and dropdown options are easy to tweak — they live
-near the top of ``VoipScanApp.__init__``.
+Editable bits live near the top of ``VoipScanApp.__init__`` and inside
+the small ``ICONS`` / ``STATUS_COLORS`` tables below.
 """
 
 from __future__ import annotations
@@ -39,11 +24,19 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from typing import Optional
 
-from . import __app_name__, __version__, capture, logger, paths, scanner
+from . import (
+    __app_name__,
+    __version__,
+    capture,
+    interpret,
+    logger,
+    paths,
+    scanner,
+)
 from .logger import get_logger, log_exception
+from .report import FormInputs, ScanReport
 
 # ---- Theme ---------------------------------------------------------------
-# Mirrors the web app's dark theme so the desktop client feels related.
 BG = "#0f1115"
 SURFACE = "#181b22"
 SURFACE_2 = "#1f232c"
@@ -54,8 +47,31 @@ ACCENT = "#d9534f"
 ACCENT_HOVER = "#ff7a73"
 SUCCESS = "#2ecc71"
 WARN = "#f5a623"
+DANGER = "#e74c3c"
+INFO_BLUE = "#3aa0ff"
+GREY = "#6b7280"
 
-# Editable dropdown choices for "Problem Experienced".
+# Status badge colors used in the post-scan summary view.
+STATUS_COLORS = {
+    "OK": SUCCESS,
+    "WARN": WARN,
+    "BAD": DANGER,
+    "INFO": INFO_BLUE,
+    "UNK": GREY,
+}
+
+# Section icon mapping — purely visual, picked to be readable on a dark
+# theme without external image assets.
+ICONS = {
+    "summary": "≡",
+    "sipalg": "S",
+    "ports": "#",
+    "vlan": "V",
+    "attribution": "A",
+    "net": "N",
+    "capture": "C",
+}
+
 PROBLEM_OPTIONS = [
     "",
     "choppy calls",
@@ -76,7 +92,9 @@ class VoipScanApp:
         self._ui_queue: "queue.Queue[str]" = queue.Queue()
         self._scan_thread: Optional[threading.Thread] = None
         self._cancel_event = threading.Event()
-        self._last_results: list[dict] = []
+        self._last_report: Optional[ScanReport] = None
+        self._last_log_path: Optional[Path] = None
+        self._last_results: list[dict] = []  # legacy nmap dicts (kept for compat)
 
         self._configure_root()
         self._build_styles()
@@ -86,7 +104,6 @@ class VoipScanApp:
         self._build_results()
         self._build_footer()
 
-        # Stream log messages into the results panel.
         logger.register_gui_sink(self._enqueue)
         self.root.after(100, self._drain_queue)
         self._enqueue(f"{__app_name__} v{__version__} ready.")
@@ -96,23 +113,21 @@ class VoipScanApp:
             self._enqueue(f"nmap: {nmap_path}")
         else:
             self._enqueue(
-                "[warn] nmap not found yet — drop a portable nmap build "
-                "into LocalScanner/nmap/ before scanning."
+                "[info] nmap not found — evidence scan still works using "
+                "Python sockets and Windows commands. Drop a portable "
+                "nmap into LocalScanner/nmap/ for the optional nmap pass."
             )
 
     # -- Window / styling -------------------------------------------------
     def _configure_root(self) -> None:
         self.root.title(__app_name__)
-        self.root.geometry("900x720")
-        self.root.minsize(780, 600)
+        self.root.geometry("960x780")
+        self.root.minsize(820, 640)
         self.root.configure(bg=BG)
 
-        # Try to set the window icon from the logo.
         try:
             logo = paths.logo_path()
             if logo.exists():
-                # PhotoImage works for PNGs in modern Tk. Keep a ref on
-                # the root so it isn't GC'd.
                 self._icon_img = tk.PhotoImage(file=str(logo))
                 self.root.iconphoto(True, self._icon_img)
         except Exception:
@@ -120,18 +135,13 @@ class VoipScanApp:
 
     def _build_styles(self) -> None:
         style = ttk.Style(self.root)
-        # 'clam' is the most theme-friendly built-in for custom colors.
         try:
             style.theme_use("clam")
         except tk.TclError:
             pass
 
-        style.configure(
-            "TFrame", background=BG,
-        )
-        style.configure(
-            "Surface.TFrame", background=SURFACE,
-        )
+        style.configure("TFrame", background=BG)
+        style.configure("Surface.TFrame", background=SURFACE)
         style.configure(
             "Card.TLabelframe",
             background=SURFACE,
@@ -145,9 +155,7 @@ class VoipScanApp:
             foreground=TEXT_MUTED,
             font=("Segoe UI", 10, "bold"),
         )
-        style.configure(
-            "TLabel", background=BG, foreground=TEXT, font=("Segoe UI", 10)
-        )
+        style.configure("TLabel", background=BG, foreground=TEXT, font=("Segoe UI", 10))
         style.configure(
             "Surface.TLabel",
             background=SURFACE,
@@ -231,42 +239,31 @@ class VoipScanApp:
             indicatorcolor=SURFACE_2,
             font=("Segoe UI", 10),
         )
-        style.map(
-            "TRadiobutton",
-            background=[("active", SURFACE)],
-        )
+        style.map("TRadiobutton", background=[("active", SURFACE)])
 
     # -- Header -----------------------------------------------------------
     def _build_header(self) -> None:
         header = ttk.Frame(self.root, style="TFrame")
         header.pack(fill="x", padx=18, pady=(16, 8))
 
-        # Logo (PhotoImage handles PNG natively).
         try:
             logo_file = paths.logo_path()
             if logo_file.exists():
                 raw = tk.PhotoImage(file=str(logo_file))
-                # Subsample to a sensible header height (~56px tall).
-                # Pick a factor that keeps aspect.
                 ratio = max(1, raw.height() // 56)
                 self._header_logo = raw.subsample(ratio, ratio)
                 tk.Label(
-                    header,
-                    image=self._header_logo,
-                    bg=BG,
-                    bd=0,
+                    header, image=self._header_logo, bg=BG, bd=0
                 ).pack(side="left", padx=(0, 14))
         except Exception:
             log_exception("Could not load header logo")
 
         text_col = ttk.Frame(header, style="TFrame")
         text_col.pack(side="left", fill="x", expand=True)
-        ttk.Label(text_col, text=__app_name__, style="Header.TLabel").pack(
-            anchor="w"
-        )
+        ttk.Label(text_col, text=__app_name__, style="Header.TLabel").pack(anchor="w")
         ttk.Label(
             text_col,
-            text="Local network diagnostics for VoIP health.",
+            text="Evidence-focused VoIP network diagnostics for Windows.",
             style="Subheader.TLabel",
         ).pack(anchor="w")
 
@@ -277,9 +274,9 @@ class VoipScanApp:
 
         self.btn_quick = ttk.Button(
             row,
-            text="Quick Scan",
+            text="Run Evidence Scan",
             style="Primary.TButton",
-            command=self._on_quick_scan,
+            command=self._on_evidence_scan,
         )
         self.btn_quick.pack(side="left", padx=(0, 10))
 
@@ -298,12 +295,9 @@ class VoipScanApp:
         )
         card.pack(fill="x", padx=18, pady=(0, 12))
 
-        # Problem Experienced
         row1 = ttk.Frame(card, style="Surface.TFrame")
         row1.pack(fill="x", pady=(0, 8))
-        ttk.Label(
-            row1, text="Problem Experienced:", style="Surface.TLabel"
-        ).pack(side="left")
+        ttk.Label(row1, text="Problem Experienced:", style="Surface.TLabel").pack(side="left")
         self.var_problem = tk.StringVar(value="")
         self.cmb_problem = ttk.Combobox(
             row1,
@@ -314,38 +308,27 @@ class VoipScanApp:
         )
         self.cmb_problem.pack(side="left", padx=(8, 0))
 
-        # Different problem text box
         row2 = ttk.Frame(card, style="Surface.TFrame")
         row2.pack(fill="x", pady=(0, 8))
         ttk.Label(
-            row2,
-            text="Do you have a different problem?",
-            style="Surface.TLabel",
+            row2, text="Do you have a different problem?", style="Surface.TLabel"
         ).pack(side="left")
         self.var_other = tk.StringVar()
         self.ent_other = ttk.Entry(row2, textvariable=self.var_other, width=40)
         self.ent_other.pack(side="left", padx=(8, 0), fill="x", expand=True)
 
-        # Advanced expand toggle
         adv_row = ttk.Frame(card, style="Surface.TFrame")
         adv_row.pack(fill="x", pady=(6, 4))
         self._advanced_open = False
         self.btn_advanced = ttk.Button(
-            adv_row,
-            text="▼  Advanced",  # ▼
-            style="TButton",
-            command=self._toggle_advanced,
+            adv_row, text="▼  Advanced", style="TButton", command=self._toggle_advanced
         )
         self.btn_advanced.pack(side="left")
 
-        # Advanced container (collapsed by default)
         self.frm_advanced = ttk.Frame(card, style="Surface.TFrame")
-        # Hosted Platform
         hp = ttk.Frame(self.frm_advanced, style="Surface.TFrame")
         hp.pack(fill="x", pady=(8, 6))
-        ttk.Label(hp, text="Hosted Platform:", style="Surface.TLabel").pack(
-            side="left"
-        )
+        ttk.Label(hp, text="Hosted Platform:", style="Surface.TLabel").pack(side="left")
         self.var_hosted = tk.StringVar(value=HOSTED_PLATFORMS[0])
         for label in HOSTED_PLATFORMS:
             ttk.Radiobutton(
@@ -356,34 +339,45 @@ class VoipScanApp:
                 style="TRadiobutton",
             ).pack(side="left", padx=(10, 0))
 
-        # IP fields
         ips = ttk.Frame(self.frm_advanced, style="Surface.TFrame")
         ips.pack(fill="x", pady=(2, 4))
         self.var_gw = tk.StringVar()
         self.var_fw = tk.StringVar()
         self.var_sb = tk.StringVar()
+        self.var_sip_endpoint = tk.StringVar()
         self._ip_field(ips, "Gateway IP:", self.var_gw, 0)
         self._ip_field(ips, "Firewall IP:", self.var_fw, 1)
         self._ip_field(ips, "Starbox IP:", self.var_sb, 2)
+        self._ip_field(
+            ips,
+            "SIP test endpoint (host:port):",
+            self.var_sip_endpoint,
+            3,
+            width=28,
+        )
 
-        # Scan Now
         scan_row = ttk.Frame(card, style="Surface.TFrame")
         scan_row.pack(fill="x", pady=(10, 0))
         self.btn_scan_now = ttk.Button(
             scan_row,
-            text="Scan Now",
+            text="Scan Now (with Advanced)",
             style="Primary.TButton",
             command=self._on_scan_now,
         )
         self.btn_scan_now.pack(side="left")
 
     def _ip_field(
-        self, parent: ttk.Frame, label: str, var: tk.StringVar, row: int
+        self,
+        parent: ttk.Frame,
+        label: str,
+        var: tk.StringVar,
+        row: int,
+        width: int = 22,
     ) -> None:
         ttk.Label(parent, text=label, style="Surface.TLabel").grid(
             row=row, column=0, sticky="w", pady=2, padx=(0, 8)
         )
-        ttk.Entry(parent, textvariable=var, width=22).grid(
+        ttk.Entry(parent, textvariable=var, width=width).grid(
             row=row, column=1, sticky="w", pady=2
         )
 
@@ -391,10 +385,10 @@ class VoipScanApp:
         self._advanced_open = not self._advanced_open
         if self._advanced_open:
             self.frm_advanced.pack(fill="x", pady=(4, 0))
-            self.btn_advanced.config(text="▲  Advanced")  # ▲
+            self.btn_advanced.config(text="▲  Advanced")
         else:
             self.frm_advanced.forget()
-            self.btn_advanced.config(text="▼  Advanced")  # ▼
+            self.btn_advanced.config(text="▼  Advanced")
 
     # -- Results ----------------------------------------------------------
     def _build_results(self) -> None:
@@ -405,13 +399,22 @@ class VoipScanApp:
             padding=10,
         )
         card.pack(fill="both", expand=True, padx=18, pady=(0, 8))
+        self._results_card = card
 
-        text_frame = tk.Frame(card, bg=SURFACE_2, highlightthickness=1,
-                              highlightbackground=BORDER)
-        text_frame.pack(fill="both", expand=True)
+        # Container that swaps between the streaming text and the
+        # post-scan summary view.
+        self.results_container = tk.Frame(card, bg=SURFACE_2, highlightthickness=1,
+                                          highlightbackground=BORDER)
+        self.results_container.pack(fill="both", expand=True)
 
+        self._build_text_view()
+        self._build_summary_view()
+        self._show_text_view()
+
+    def _build_text_view(self) -> None:
+        self.text_view = tk.Frame(self.results_container, bg=SURFACE_2)
         self.txt_results = tk.Text(
-            text_frame,
+            self.text_view,
             bg=SURFACE_2,
             fg=TEXT,
             insertbackground=TEXT,
@@ -422,33 +425,80 @@ class VoipScanApp:
             pady=8,
         )
         self.txt_results.pack(side="left", fill="both", expand=True)
-        scroll = ttk.Scrollbar(text_frame, command=self.txt_results.yview)
+        scroll = ttk.Scrollbar(self.text_view, command=self.txt_results.yview)
         scroll.pack(side="right", fill="y")
         self.txt_results.configure(yscrollcommand=scroll.set, state="disabled")
+
+    def _build_summary_view(self) -> None:
+        # Scrollable canvas containing per-section frames.
+        self.summary_view = tk.Frame(self.results_container, bg=SURFACE_2)
+        self.summary_canvas = tk.Canvas(
+            self.summary_view, bg=SURFACE_2, highlightthickness=0
+        )
+        self.summary_canvas.pack(side="left", fill="both", expand=True)
+        scroll = ttk.Scrollbar(
+            self.summary_view, orient="vertical", command=self.summary_canvas.yview
+        )
+        scroll.pack(side="right", fill="y")
+        self.summary_canvas.configure(yscrollcommand=scroll.set)
+
+        self.summary_inner = tk.Frame(self.summary_canvas, bg=SURFACE_2)
+        self._summary_window = self.summary_canvas.create_window(
+            (0, 0), window=self.summary_inner, anchor="nw"
+        )
+        self.summary_inner.bind(
+            "<Configure>",
+            lambda e: self.summary_canvas.configure(
+                scrollregion=self.summary_canvas.bbox("all")
+            ),
+        )
+        self.summary_canvas.bind(
+            "<Configure>",
+            lambda e: self.summary_canvas.itemconfigure(
+                self._summary_window, width=e.width
+            ),
+        )
+
+    def _show_text_view(self) -> None:
+        try:
+            self.summary_view.pack_forget()
+        except Exception:
+            pass
+        self.text_view.pack(fill="both", expand=True)
+
+    def _show_summary_view(self) -> None:
+        try:
+            self.text_view.pack_forget()
+        except Exception:
+            pass
+        self.summary_view.pack(fill="both", expand=True)
 
     def _build_footer(self) -> None:
         row = ttk.Frame(self.root, style="TFrame")
         row.pack(fill="x", padx=18, pady=(0, 16))
 
         self.btn_download = ttk.Button(
-            row,
-            text="Download Results",
-            style="Secondary.TButton",
-            command=self._on_download,
+            row, text="Download Results", style="Secondary.TButton", command=self._on_download
         )
         self.btn_download.pack(side="left")
 
+        self.btn_show_log = ttk.Button(
+            row, text="Show Raw Log", style="TButton", command=self._show_text_view
+        )
+        self.btn_show_log.pack(side="left", padx=(8, 0))
+
+        self.btn_show_summary = ttk.Button(
+            row, text="Show Summary", style="TButton",
+            command=lambda: self._show_summary_view() if self._last_report else None,
+        )
+        self.btn_show_summary.pack(side="left", padx=(8, 0))
+
         self.btn_clear = ttk.Button(
-            row,
-            text="Clear",
-            style="TButton",
-            command=self._on_clear,
+            row, text="Clear", style="TButton", command=self._on_clear
         )
         self.btn_clear.pack(side="right")
 
-        self.lbl_status = ttk.Label(
-            row, text="Idle.", style="Subheader.TLabel"
-        )
+        self.lbl_status = ttk.Label(row, text="Idle.", style="Subheader.TLabel")
         self.lbl_status.pack(side="right", padx=(0, 12))
 
     # -- GUI plumbing -----------------------------------------------------
@@ -472,11 +522,7 @@ class VoipScanApp:
 
     def _set_busy(self, busy: bool, status: str = "") -> None:
         state = "disabled" if busy else "normal"
-        for btn in (
-            self.btn_quick,
-            self.btn_capture,
-            self.btn_scan_now,
-        ):
+        for btn in (self.btn_quick, self.btn_capture, self.btn_scan_now):
             btn.configure(state=state)
         if status:
             self.lbl_status.configure(text=status)
@@ -484,92 +530,222 @@ class VoipScanApp:
             self.lbl_status.configure(text="Idle.")
 
     # -- Action handlers --------------------------------------------------
-    def _on_quick_scan(self) -> None:
-        profile = scanner.build_quick_profile()
-        self._run_scan(profile, "Running quick scan...")
+    def _on_evidence_scan(self) -> None:
+        self._run_evidence(self._collect_form())
 
     def _on_scan_now(self) -> None:
-        targets = [
-            self.var_gw.get(),
-            self.var_fw.get(),
-            self.var_sb.get(),
-        ]
-        cleaned = [t.strip() for t in targets if t and t.strip()]
-        if not cleaned:
-            messagebox.showwarning(
-                __app_name__,
-                "Enter at least one IP under Advanced (Gateway, Firewall or "
-                "Starbox) before running Scan Now.",
-            )
-            return
-        profile = scanner.build_targeted_profile(cleaned)
-        self._run_scan(profile, "Running targeted scan...")
+        self._run_evidence(self._collect_form())
 
     def _on_packet_capture(self) -> None:
-        # Stub-only — see voipscan/capture.py.
         self._enqueue(capture.start_capture_stub())
         status = capture.detect_capture_engine()
         if not status.available:
-            messagebox.showinfo(
-                __app_name__,
-                status.detail,
-            )
+            messagebox.showinfo(__app_name__, status.detail)
 
-    def _run_scan(self, profile: scanner.ScanProfile, status: str) -> None:
+    def _run_evidence(self, form: FormInputs) -> None:
         if self._scan_thread and self._scan_thread.is_alive():
-            messagebox.showinfo(
-                __app_name__, "A scan is already running. Please wait."
-            )
+            messagebox.showinfo(__app_name__, "A scan is already running. Please wait.")
             return
-        self._set_busy(True, status)
+        # Switch to streaming text view for the duration of the scan.
+        self._show_text_view()
+        self._set_busy(True, "Running evidence scan...")
         self._cancel_event = threading.Event()
 
         def worker() -> None:
+            report: Optional[ScanReport] = None
             try:
-                result = scanner.run_profile(
-                    profile,
-                    on_line=self._enqueue,
+                report = scanner.run_evidence_scan(
+                    form=form,
+                    on_log=self._enqueue,
+                    use_nmap=True,
                     cancel_event=self._cancel_event,
                 )
-                result["finished_at"] = datetime.utcnow().isoformat() + "Z"
-                result["form"] = self._collect_form()
-                self._last_results.append(result)
-                self._enqueue(
-                    f"[{profile.name}] complete (rc={result['returncode']})."
-                )
-            except scanner.ScanError as e:
-                self._enqueue(f"[error] {e}")
-                messagebox.showerror(__app_name__, str(e))
+                report.app_version = __version__
+                self._last_report = report
+                self._enqueue("[scan] Saving raw log to disk...")
+                log_path = self._save_raw_log(report)
+                self._last_log_path = log_path
+                self._enqueue(f"[scan] Log saved -> {log_path}")
+                self._enqueue("[scan] Switching to plain-English summary view.")
+                self.root.after(0, lambda: self._render_summary(report))
             except Exception as e:
-                log_exception(f"Unexpected error during {profile.name}")
-                self._enqueue(f"[error] Unexpected: {e}")
+                log_exception("Evidence scan failed")
+                self._enqueue(f"[error] {e}")
                 messagebox.showerror(
                     __app_name__,
-                    f"Unexpected error during {profile.name}. See logs/voipscan.log.",
+                    f"Unexpected error during scan. See logs/voipscan.log.",
                 )
             finally:
                 self.root.after(0, lambda: self._set_busy(False))
 
         self._scan_thread = threading.Thread(
-            target=worker, name="voipscan-worker", daemon=True
+            target=worker, name="voipscan-evidence", daemon=True
         )
         self._scan_thread.start()
 
-    def _collect_form(self) -> dict:
-        return {
-            "problem_experienced": self.var_problem.get(),
-            "other_problem": self.var_other.get().strip(),
-            "hosted_platform": self.var_hosted.get(),
-            "gateway_ip": self.var_gw.get().strip(),
-            "firewall_ip": self.var_fw.get().strip(),
-            "starbox_ip": self.var_sb.get().strip(),
-        }
+    def _collect_form(self) -> FormInputs:
+        return FormInputs(
+            problem_experienced=self.var_problem.get(),
+            other_problem=self.var_other.get().strip(),
+            hosted_platform=self.var_hosted.get(),
+            gateway_ip=self.var_gw.get().strip(),
+            firewall_ip=self.var_fw.get().strip(),
+            starbox_ip=self.var_sb.get().strip(),
+            sip_test_endpoint=self.var_sip_endpoint.get().strip(),
+        )
 
+    # -- Saving / rendering ----------------------------------------------
+    def _save_raw_log(self, report: ScanReport) -> Path:
+        log_dir = paths.logs_dir()
+        ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        log_path = log_dir / f"voipscan_evidence_{ts}.log"
+        text = self._buffer_text()
+        with log_path.open("w", encoding="utf-8") as f:
+            f.write(f"{__app_name__} v{__version__}\n")
+            f.write(f"Scan started: {report.started_at}\n")
+            f.write(f"Scan finished: {report.finished_at}\n")
+            f.write(f"Duration: {report.duration_seconds:.1f}s\n\n")
+            f.write("=== STREAMING LOG ===\n")
+            f.write(text)
+            f.write("\n\n=== JSON REPORT ===\n")
+            f.write(report.to_json())
+        return log_path
+
+    def _render_summary(self, report: ScanReport) -> None:
+        # Replace the streaming view with the plain-English summary.
+        self._clear_summary_inner()
+        sections = interpret.build_sections(report)
+
+        # Top header with metadata.
+        meta = tk.Frame(self.summary_inner, bg=SURFACE_2, padx=14, pady=10)
+        meta.pack(fill="x")
+        tk.Label(
+            meta,
+            text="Plain-English Scan Results",
+            bg=SURFACE_2,
+            fg=TEXT,
+            font=("Segoe UI", 14, "bold"),
+            anchor="w",
+        ).pack(anchor="w")
+        finished = report.finished_at or "(unknown)"
+        tk.Label(
+            meta,
+            text=f"Generated {finished} • {report.duration_seconds:.1f}s • "
+                 f"v{report.app_version or __version__}",
+            bg=SURFACE_2,
+            fg=TEXT_MUTED,
+            font=("Segoe UI", 9),
+            anchor="w",
+        ).pack(anchor="w")
+        if self._last_log_path is not None:
+            tk.Label(
+                meta,
+                text=f"Raw log: {self._last_log_path}",
+                bg=SURFACE_2,
+                fg=TEXT_MUTED,
+                font=("Segoe UI", 9),
+                anchor="w",
+            ).pack(anchor="w")
+
+        ttk.Separator(self.summary_inner).pack(fill="x", padx=14, pady=(6, 0))
+
+        for sec in sections:
+            self._render_section(self.summary_inner, sec)
+
+        self._show_summary_view()
+
+    def _clear_summary_inner(self) -> None:
+        for w in self.summary_inner.winfo_children():
+            w.destroy()
+
+    def _render_section(self, parent: tk.Frame, sec: "interpret.Section") -> None:
+        color = STATUS_COLORS.get(sec.status, GREY)
+        icon_text = ICONS.get(sec.key, "?")
+
+        outer = tk.Frame(parent, bg=SURFACE_2, padx=12, pady=8)
+        outer.pack(fill="x", padx=4, pady=(8, 0))
+
+        # A row containing the colored badge canvas + the section header.
+        head = tk.Frame(outer, bg=SURFACE_2)
+        head.pack(fill="x")
+
+        badge = tk.Canvas(
+            head, width=44, height=44, bg=SURFACE_2, highlightthickness=0
+        )
+        badge.pack(side="left", padx=(0, 10))
+        badge.create_oval(2, 2, 42, 42, fill=color, outline=color)
+        badge.create_text(22, 22, text=icon_text, fill="#0f1115",
+                          font=("Segoe UI", 16, "bold"))
+
+        title_col = tk.Frame(head, bg=SURFACE_2)
+        title_col.pack(side="left", fill="x", expand=True)
+        tk.Label(
+            title_col,
+            text=sec.title,
+            bg=SURFACE_2,
+            fg=TEXT,
+            font=("Segoe UI", 12, "bold"),
+            anchor="w",
+        ).pack(anchor="w")
+
+        status_label = tk.Label(
+            title_col,
+            text=f"  {sec.status} — {sec.summary}",
+            bg=SURFACE_2,
+            fg=color,
+            font=("Segoe UI", 10, "bold"),
+            anchor="w",
+            justify="left",
+            wraplength=720,
+        )
+        status_label.pack(anchor="w")
+
+        # Bullets
+        if sec.bullets:
+            body = tk.Frame(outer, bg=SURFACE_2)
+            body.pack(fill="x", padx=(54, 0), pady=(4, 0))
+            for line in sec.bullets:
+                tk.Label(
+                    body,
+                    text=line,
+                    bg=SURFACE_2,
+                    fg=TEXT,
+                    font=("Segoe UI", 10),
+                    anchor="w",
+                    justify="left",
+                    wraplength=720,
+                ).pack(anchor="w", pady=1)
+
+        # Fixes
+        if sec.fixes:
+            fbox = tk.Frame(outer, bg=SURFACE_2)
+            fbox.pack(fill="x", padx=(54, 0), pady=(6, 0))
+            tk.Label(
+                fbox,
+                text="Suggested fixes",
+                bg=SURFACE_2,
+                fg=TEXT_MUTED,
+                font=("Segoe UI", 9, "bold"),
+                anchor="w",
+            ).pack(anchor="w")
+            for f in sec.fixes:
+                tk.Label(
+                    fbox,
+                    text=f"• {f}",
+                    bg=SURFACE_2,
+                    fg=TEXT,
+                    font=("Segoe UI", 10),
+                    anchor="w",
+                    justify="left",
+                    wraplength=720,
+                ).pack(anchor="w", pady=1)
+
+        ttk.Separator(parent).pack(fill="x", padx=14, pady=(4, 0))
+
+    # -- Download / clear -------------------------------------------------
     def _on_download(self) -> None:
-        if not self._last_results and not self._buffer_text():
-            messagebox.showinfo(
-                __app_name__, "Nothing to save yet — run a scan first."
-            )
+        if self._last_report is None and not self._buffer_text():
+            messagebox.showinfo(__app_name__, "Nothing to save yet — run a scan first.")
             return
         default = f"voipscan_report_{logger.session_id()}.json"
         path = filedialog.asksaveasfilename(
@@ -578,7 +754,7 @@ class VoipScanApp:
             initialdir=str(paths.reports_dir()),
             filetypes=[
                 ("JSON report", "*.json"),
-                ("Text log", "*.txt"),
+                ("Text report", "*.txt"),
                 ("All files", "*.*"),
             ],
             title="Save Scan Report",
@@ -595,32 +771,24 @@ class VoipScanApp:
     def _write_report(self, path: Path) -> None:
         if path.suffix.lower() == ".txt":
             with path.open("w", encoding="utf-8") as f:
-                f.write(f"{__app_name__} report\n")
+                f.write(f"{__app_name__} v{__version__}\n")
                 f.write(f"Generated: {datetime.utcnow().isoformat()}Z\n\n")
-                f.write("--- Form ---\n")
-                form = self._last_results[-1]["form"] if self._last_results else {}
-                for k, v in form.items():
-                    f.write(f"{k}: {v}\n")
-                f.write("\n--- Results ---\n")
-                for r in self._last_results:
-                    f.write(f"\n# {r['profile']} (rc={r['returncode']})\n")
-                    f.write(f"command: {' '.join(r['command'])}\n")
-                    f.write(r["stdout"])
-                    f.write("\n")
-                f.write("\n--- Console buffer ---\n")
+                if self._last_report is not None:
+                    f.write(interpret.render_plain_text(self._last_report))
+                    f.write("\n\n=== Streaming log ===\n")
                 f.write(self._buffer_text())
             return
 
-        payload = {
-            "app": __app_name__,
-            "version": __version__,
-            "generated_at": datetime.utcnow().isoformat() + "Z",
-            "form": self._last_results[-1]["form"] if self._last_results else {},
-            "results": self._last_results,
-            "console": self._buffer_text(),
-        }
+        # JSON: full ScanReport plus a copy of the streaming log.
+        if self._last_report is not None:
+            payload = self._last_report.to_dict()
+        else:
+            payload = {}
+        payload["console"] = self._buffer_text()
+        payload["app"] = __app_name__
+        payload["version"] = __version__
         with path.open("w", encoding="utf-8") as f:
-            json.dump(payload, f, indent=2)
+            json.dump(payload, f, indent=2, default=str)
 
     def _buffer_text(self) -> str:
         self.txt_results.configure(state="normal")
@@ -632,6 +800,8 @@ class VoipScanApp:
         self.txt_results.configure(state="normal")
         self.txt_results.delete("1.0", "end")
         self.txt_results.configure(state="disabled")
+        self._clear_summary_inner()
+        self._show_text_view()
 
 
 def run() -> None:
