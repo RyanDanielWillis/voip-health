@@ -1,4 +1,4 @@
-/* Angry Voip Scanner — theme controller.
+/* VoIP Health Check — theme controller.
  * Applies data-theme="light" or data-theme="dark" to <html>, which the
  * stylesheet keys off via :root[data-theme="light"]. Attribute-on-root
  * means we never depend on body existing and never race the parser.

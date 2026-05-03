@@ -3,7 +3,7 @@
     <img src=/web/static/logo.png />
   </td>
   <td>
-   <h1>Angry VoIP Scanner</h1>
+   <h1>VoIP Health Check</h1>
 
 [![Python](https://img.shields.io/badge/Python-3.11-blue)](https://python.org)
 
