@@ -32,68 +32,51 @@ https://voipscan.danielscience.com/dashboard.
 
 <p align="center">
   <img src="client_gui.png"
-       alt="VoIP Health Check Windows client GUI showing the evidence-scan card, optional context fields, and the scan results / log pane."
+       alt="VoIP Health Check Windows client GUI showing Quick Scan, packet capture, and the scan results / log pane."
        width="400">
 </p>
 
-The desktop client is a portable Windows GUI titled **VoIP Health Check —
-Local network diagnostics for VoIP health**. The screenshot above shows the
-main window:
+A portable Windows GUI for on-site VoIP diagnostics. One click runs the
+full pipeline (SIP ALG, port reachability, latency / jitter, DHCP, VLAN)
+and uploads a structured report to the hosted dashboard.
 
-- A red **Quick Scan** button and a neighbouring **Start Packet Capture**
-  button along the top action row, both sized and spaced to match — the
-  packet-capture flow now has a dedicated **Stop Packet Capture** button
-  beside Start so the operator can finalize a capture without relying on
-  a single toggle.
-- An **Optional** card with a *Problem Experienced* dropdown, a *Do you
-  have a different problem?* free-text field, an *Advanced* (collapsible)
-  panel where every field is optional and auto-detected when blank, and
-  a red **Scan Now** button.
-- A dark **Scan Results / Log** pane that streams diagnostic lines
-  during a scan and switches to a plain-English summary (with status
-  badges) when the scan finishes. The screenshot shows the idle state
-  with the app version banner, the local logs path, and the resolved
-  `nmap.exe` path.
+**Main controls:**
 
-### Download the Windows client
+- **Quick Scan** — one-click diagnostics; gateway is auto-detected.
+- **Start / Stop Packet Capture** — dedicated buttons; uses `dumpcap`
+  (Wireshark/Npcap) when present and falls back to a non-admin
+  `pktmon` evidence file so something always lands on disk.
+- **Stop Scan** — cancel a running scan cleanly without closing the
+  app.
+- **Advanced options → Run Advanced Scan** — same Quick Scan checks
+  plus a deeper SIP/RTP port sweep and longer latency sampling. Tucked
+  under Advanced so the main view stays simple.
+- **Optional card** — *Problem Experienced* dropdown, free-text field,
+  and (under Advanced) hosted platform / gateway IP / firewall IP /
+  starbox IP / SIP test endpoint. Every field is optional.
 
-**Permanent download location:** the
-[**GitHub Releases page**](https://github.com/RyanDanielWillis/voip-health/releases)
-for this repo. Each release is published by the
-[*Release LocalScanner Windows EXE*](https://github.com/RyanDanielWillis/voip-health/actions/workflows/release-localscanner.yml)
-workflow and ships the same self-identifying package described below.
-Releases never expire — prefer them over Actions artifacts when sharing
-a download link with end users.
+After each scan the report, raw log, and any captures are uploaded to
+the VPS automatically and surface on the
+[dashboard](https://voipscan.danielscience.com/dashboard) with latency
+and jitter ratings, top issues, suggested fixes, relevant IPs, and any
+blocked ports. Local copies are always kept on the operator's machine.
 
-To install the latest release:
+### Download
 
-1. Open the [**Releases page**](https://github.com/RyanDanielWillis/voip-health/releases)
-   and pick the newest `localscanner-v<version>` release (or
-   [download the latest directly](https://github.com/RyanDanielWillis/voip-health/releases/latest)).
-2. Under **Assets**, download
-   `VoIPHealthCheck-windows-package-<version>.zip` (recommended — exe
-   plus bundled `nmap/`, `BUILD_INFO.txt`, `VERSION.txt`, README) or the
-   standalone `VoIPHealthCheck-<version>.exe`.
-3. Unzip into a fresh folder (e.g. `C:\Tools\VoIPHealthCheck-2.2.0\`)
-   and run `VoIPHealthCheck-<version>.exe` — no installer required. (The
-   unversioned `VoIPHealthCheck.exe` next to it is byte-identical and
-   exists so existing shortcuts keep working; the versioned name makes
-   the build obvious at a glance.)
+Get the latest portable build from the
+[**GitHub Releases page**](https://github.com/RyanDanielWillis/voip-health/releases/latest)
+— grab `VoIPHealthCheck-windows-package-<version>.zip`, unzip into a
+fresh folder, and run the versioned `VoIPHealthCheck-<version>.exe`.
+No installer required. Releases are the permanent download location;
+per-commit dev builds are published as
+[Actions workflow artifacts](https://github.com/RyanDanielWillis/voip-health/actions/workflows/build-localscanner.yml)
+for testing only.
 
-> **Dev / pre-release builds.** The
-> [`build-localscanner.yml`](https://github.com/RyanDanielWillis/voip-health/actions/workflows/build-localscanner.yml)
-> workflow still publishes per-commit binaries as Actions
-> *workflow-run artifacts*. Those are useful for testing an unreleased
-> change but expire after GitHub's retention window and require
-> navigating the Actions UI — they are **not** the recommended download
-> path for end users. Releases are.
-
-`.exe` and `.zip` files are intentionally **not** committed to the
-repository. The release workflow is the source of truth so the
-published binary always tracks a specific commit.
-
-The hosted homepage at https://voipscan.danielscience.com also surfaces
-the same screenshot, copy and download instructions for end users.
+The hosted site at https://voipscan.danielscience.com surfaces the same
+download link plus a quick-start guide at
+[`/docs`](https://voipscan.danielscience.com/docs). The previous
+deeper reference (REST API, schema, security model) is preserved at
+[`/old`](https://voipscan.danielscience.com/old).
 
 ### Troubleshooting: scan appears to hang / shows wrong version
 

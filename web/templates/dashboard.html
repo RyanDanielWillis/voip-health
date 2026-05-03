@@ -69,35 +69,35 @@
                     <td>{{ s.uploaded_at }}</td>
                     <td>
                         {% if s.issue_critical %}
-                            <span class="badge danger">{{ s.issue_critical }} crit</span>
+                            <span class="badge danger" title="{{ s.issue_critical }} critical issue(s) detected — open scan #{{ s.id }} for the full list and suggested fixes">{{ s.issue_critical }} crit</span>
                         {% endif %}
                         {% if s.issue_warning %}
-                            <span class="badge warn">{{ s.issue_warning }} warn</span>
+                            <span class="badge warn" title="{{ s.issue_warning }} warning(s) — open scan #{{ s.id }} for details">{{ s.issue_warning }} warn</span>
                         {% endif %}
                         {% if not s.issue_critical and not s.issue_warning %}
-                            <span class="badge success">clean</span>
+                            <span class="badge success" title="No critical issues or warnings on this scan">clean</span>
                         {% endif %}
                     </td>
                     <td>
                         {% if s.sip_alg_overall == 'likely_on' %}
-                            <span class="badge danger">likely_on</span>
+                            <span class="badge danger" title="SIP ALG looks enabled on the firewall/router. Disable SIP ALG and reboot the phone.">likely_on</span>
                         {% elif s.sip_alg_overall == 'likely_off' %}
-                            <span class="badge success">off</span>
+                            <span class="badge success" title="SIP ALG appears to be off — no rewriting fingerprints observed.">off</span>
                         {% else %}
-                            <span class="badge muted">{{ s.sip_alg_overall or '—' }}</span>
+                            <span class="badge muted" title="SIP ALG state could not be determined from the evidence.">{{ s.sip_alg_overall or '—' }}</span>
                         {% endif %}
                     </td>
-                    <td>{{ s.vlan_status or '—' }}</td>
+                    <td title="VLAN tag visibility as reported by the OS (LLDP / 802.1Q hints).">{{ s.vlan_status or '—' }}</td>
                     <td>
                         {% if s.latency_status == 'bad' %}
-                            <span class="badge danger">bad</span>
+                            <span class="badge danger" title="Latency / jitter / packet loss exceeded VoIP-acceptable thresholds.">bad</span>
                         {% elif s.latency_status == 'warn' %}
-                            <span class="badge warn">warn</span>
+                            <span class="badge warn" title="Latency or jitter is borderline — voice may degrade under load.">warn</span>
                         {% elif s.latency_status %}
-                            <span class="badge success">{{ s.latency_status }}</span>
+                            <span class="badge success" title="Latency, jitter and packet loss within VoIP-acceptable ranges.">{{ s.latency_status }}</span>
                         {% else %}—{% endif %}
                     </td>
-                    <td>{{ s.likely_blocking or '—' }}</td>
+                    <td title="Likely root cause inferred from the evidence collected during the scan.">{{ s.likely_blocking or '—' }}</td>
                     <td>
                         <span class="muted">{{ s.port_open }}/{{ s.port_total }} open</span>
                         {% if s.port_blocked %}

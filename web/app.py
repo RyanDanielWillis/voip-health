@@ -248,6 +248,13 @@ def docs():
     return render_template("docs.html")
 
 
+@app.route("/old")
+@app.route("/docs/old")
+def docs_old():
+    """Archived, full-length documentation kept for reference."""
+    return render_template("docs_old.html")
+
+
 def _safe_dict(v) -> dict:
     return v if isinstance(v, dict) else {}
 
