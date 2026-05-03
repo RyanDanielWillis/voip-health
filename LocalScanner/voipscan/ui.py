@@ -460,9 +460,8 @@ class VoipScanApp:
         row.pack(fill="x", padx=24, pady=(16, 14))
 
         # Top row hosts Quick Scan + the packet capture controls. The
-        # bigger Advanced Scan button lives on its own row at the bottom
-        # of the window so the operator sees a clear "do more" option
-        # after they've reviewed Quick Scan output.
+        # Advanced Scan button lives at the bottom of the Advanced
+        # options frame so it is only visible when Advanced is expanded.
         self.btn_quick = ttk.Button(
             row,
             text="Quick Scan",
@@ -609,9 +608,29 @@ class VoipScanApp:
             hint="leave blank to skip external SIP probes; ALG proof will be limited",
         )
 
-        # No "Scan Now" button here — Quick Scan lives at the top, and
-        # Run Advanced Scan lives in its own row at the bottom of the
-        # window so the two profiles are clearly separated.
+        # Run Advanced Scan sits at the bottom of the Advanced options
+        # frame so it is only visible when Advanced is expanded.
+        adv_cta_row = ttk.Frame(self.frm_advanced, style="Surface.TFrame")
+        adv_cta_row.pack(fill="x", pady=(12, 4))
+        self.btn_advanced_scan = ttk.Button(
+            adv_cta_row,
+            text="Run Advanced Scan",
+            style="Primary.TButton",
+            command=self._on_advanced_scan,
+            width=24,
+        )
+        self.btn_advanced_scan.pack(side="left")
+        ttk.Label(
+            adv_cta_row,
+            text=(
+                "Advanced runs every Quick Scan check plus a deeper SIP/RTP "
+                "port sweep, longer latency sampling, and (when nmap is "
+                "available) a service-version probe."
+            ),
+            style="Muted.TLabel",
+            wraplength=620,
+            justify="left",
+        ).pack(side="left", padx=(12, 0))
 
     def _ip_field(
         self,
@@ -740,31 +759,9 @@ class VoipScanApp:
         self.summary_view.pack(fill="both", expand=True)
 
     def _build_footer(self) -> None:
-        # Big bottom CTA — Run Advanced Scan. Sits on its own row so
-        # operators see a clear "go deeper" option separate from Quick
-        # Scan at the top.
-        adv_row = ttk.Frame(self.root, style="TFrame")
-        adv_row.pack(fill="x", padx=24, pady=(0, 8))
-        self.btn_advanced_scan = ttk.Button(
-            adv_row,
-            text="Run Advanced Scan",
-            style="Primary.TButton",
-            command=self._on_advanced_scan,
-            width=24,
-        )
-        self.btn_advanced_scan.pack(side="left")
-        ttk.Label(
-            adv_row,
-            text=(
-                "Advanced runs every Quick Scan check plus a deeper SIP/RTP "
-                "port sweep, longer latency sampling, and (when nmap is "
-                "available) a service-version probe."
-            ),
-            style="MutedBg.TLabel",
-            wraplength=620,
-            justify="left",
-        ).pack(side="left", padx=(12, 0))
-
+        # Run Advanced Scan now lives inside the Advanced options frame
+        # so it is only shown when the operator expands Advanced. The
+        # footer keeps the secondary controls (download / log / clear).
         row = ttk.Frame(self.root, style="TFrame")
         row.pack(fill="x", padx=24, pady=(0, 18))
 
