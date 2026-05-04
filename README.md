@@ -5,7 +5,7 @@
   <td>
    <h1>VoIP Health Check</h1>
 
-[![Python](https://img.shields.io/badge/Python-3.11-blue)](https://python.org)[![Beta]]
+[![Python](https://img.shields.io/badge/Python-3.11-blue)](https://python.org)
 
 **Diagnose VoIP problems and security risks with plain-english fixes.** <br>
 Scans your PBX/phone system for one-way audio, choppy calls, exposed extensions, and more — then tells you exactly what's wrong and how to fix it.
