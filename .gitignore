@@ -5,9 +5,9 @@ data/
 .DS_Store
 
 # LocalScanner build / runtime artifacts
-LocalScanner/build/
-LocalScanner/dist/
-LocalScanner/logs/
-LocalScanner/reports/
-LocalScanner/captures/
-LocalScanner/.venv/
+packaging/
+src/dist/
+src/logs/
+src/reports/
+src/captures/
+src/.venv/
