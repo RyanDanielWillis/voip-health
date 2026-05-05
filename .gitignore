@@ -5,7 +5,6 @@ data/
 .DS_Store
 
 # LocalScanner build / runtime artifacts
-packaging/
 src/dist/
 src/logs/
 src/reports/
