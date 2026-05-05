@@ -53,7 +53,7 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from scanner.results import flatten_audit, first_or_empty  # noqa: E402
+from results import flatten_audit, first_or_empty  # noqa: E402
 
 from . import db as analytics_db  # noqa: E402
 
@@ -727,7 +727,7 @@ def upload_audit_legacy():
         return jsonify({"status": "error", "message": "No JSON provided"}), 400
 
     # Wrap whatever we got into the v2 shape so we still benefit from the
-    # normalized columns. ``scanner.results.flatten_audit`` keeps the legacy
+    # normalized columns. ``results.flatten_audit`` keeps the legacy
     # dashboard rendering path useful for anything not in the new schema.
     if isinstance(data, dict) and "report" in data:
         report = data.get("report") if isinstance(data.get("report"), dict) else {}
