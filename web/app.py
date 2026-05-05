@@ -53,7 +53,7 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from results import flatten_audit, first_or_empty  # noqa: E402
+from .results import flatten_audit, first_or_empty  # noqa: E402
 
 from . import db as analytics_db  # noqa: E402
 
