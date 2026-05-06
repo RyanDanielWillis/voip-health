@@ -31,7 +31,7 @@ https://voipscan.danielscience.com/dashboard.
 ## Desktop client (Windows)
 
 <p align="center">
-  <img src="client_gui.png"
+  <img src="/web/static/client_gui.png"
        alt="VoIP Health Check Windows client GUI showing Quick Scan, packet capture, and the scan results / log pane."
        width="400">
 </p>
