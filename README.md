@@ -1,6 +1,6 @@
 <table>
   <tr><td width="200" align="center">
-    <img src="web/static/logo.png" alt="VoIP Health Check logo" width="160">
+    <img src="web/static/logo.png" alt="VoIP Health Check logo [beta]" width="160">
   </td>
   <td>
    <h1>VoIP Health Check</h1>
